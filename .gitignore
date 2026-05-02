@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+build/
+dist/
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# uv
+.uv-cache/
+
+# Local snapshots / state written at runtime
+~/Library/Application Support/flstudio-mcp/
