@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flstudio-mcp"
+version = "0.1.0.dev0"
+description = "MCP server exposing FL Studio project introspection and mutation as LLM tools"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Roman Pronskiy", email = "roman@pronskiy.com" }]
+keywords = ["fl-studio", "mcp", "model-context-protocol", "daw", "music-production"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+# Notes:
+# - PyFLP is intentionally NOT a dependency. The offline runtime calls the
+#   canonical TS parser from `flpdiff` via a Node child_process (decision #21
+#   in MCP-SPEC.md).
+# - `re_harness` lives at `../python/tools/re_harness/` and is not packaged.
+#   v0.1 imports it via sys.path injection (vendor/ in v1.0 per spec line 151).
+# - `flpdiff` (Python) is added as a path dependency for cross-project tests
+#   even though MCP doesn't import flp_diff directly. See [tool.uv.sources].
+dependencies = [
+    "mcp>=1.0",
+    "pydantic>=2.6",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.6",
+    "pre-commit>=3.6",
+]
+
+[project.scripts]
+flstudio-mcp = "flstudio_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/pronskiy/dawhub"
+Repository = "https://github.com/pronskiy/dawhub"
+Issues = "https://github.com/pronskiy/dawhub/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flstudio_mcp"]
