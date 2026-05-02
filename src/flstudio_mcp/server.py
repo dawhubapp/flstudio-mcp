@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 from mcp.server.fastmcp import FastMCP
 
 from . import __version__
 from .logging_setup import configure_logging, env_log_level
 from .resources import logs as logs_resource
+from .runtime.live import LiveRuntime, default_runtime
+from .tools import live as live_tool
 
 SERVER_NAME = "flstudio-mcp"
 SERVER_INSTRUCTIONS = (
@@ -20,13 +23,21 @@ SERVER_INSTRUCTIONS = (
 )
 
 
-def build_server() -> FastMCP:
-    """Construct the FastMCP server with resources registered."""
+def _default_runtime_factory() -> LiveRuntime:
+    return default_runtime()
+
+
+def build_server(
+    *,
+    runtime_factory: Callable[[], LiveRuntime] = _default_runtime_factory,
+) -> FastMCP:
+    """Construct the FastMCP server with tools and resources registered."""
     server = FastMCP(
         name=SERVER_NAME,
         instructions=SERVER_INSTRUCTIONS,
     )
     logs_resource.register(server)
+    live_tool.register(server, runtime_factory)
     return server
 
 
