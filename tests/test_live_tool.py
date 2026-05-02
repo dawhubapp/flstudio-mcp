@@ -110,6 +110,37 @@ def test_list_apis_enumerates_kinds(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert rt.sent == []  # purely local
 
 
+def test_check_iac_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from flstudio_mcp.installer import iac
+
+    _state_dir(tmp_path, monkeypatch)
+    monkeypatch.setattr(iac, "check_iac_status", lambda: iac.IacStatus(iac.IacState.ONLINE))
+    rt = FakeRuntime()
+    env = live_tool.execute("check_iac", None, runtime=rt)
+    assert env["ok"] is True
+    assert env["result"]["state"] == "online"
+    assert env["result"]["ok"] is True
+
+
+def test_enable_iac_kind_failure_attaches_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from flstudio_mcp.installer import iac
+
+    _state_dir(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        iac,
+        "enable_iac_via_ui_scripting",
+        lambda: iac.IacStatus(iac.IacState.OFFLINE, "still off"),
+    )
+    rt = FakeRuntime()
+    env = live_tool.execute("enable_iac", None, runtime=rt)
+    assert env["ok"] is True  # tool ran; payload describes IAC state
+    assert env["result"]["state"] == "offline"
+    assert env["result"]["error"] == "IAC_DRIVER_OFFLINE"
+    assert "Audio MIDI Setup" in env["result"]["hint"]
+
+
 def test_install_script_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _state_dir(tmp_path, monkeypatch)
     hw = tmp_path / "Hardware"

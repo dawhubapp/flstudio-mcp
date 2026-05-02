@@ -21,13 +21,28 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 
 from .. import state as state_mod
+from ..installer import iac as iac_installer
 from ..installer import midi_script as midi_installer
 from ..logging_setup import get_logger
 from ..runtime.live import LiveRuntime
 from ..telemetry import record_event
 
-LiveKind = Literal["describe", "get_tempo", "list_apis", "install_script"]
-SUPPORTED_KINDS: tuple[str, ...] = ("describe", "get_tempo", "list_apis", "install_script")
+LiveKind = Literal[
+    "describe",
+    "get_tempo",
+    "list_apis",
+    "install_script",
+    "check_iac",
+    "enable_iac",
+]
+SUPPORTED_KINDS: tuple[str, ...] = (
+    "describe",
+    "get_tempo",
+    "list_apis",
+    "install_script",
+    "check_iac",
+    "enable_iac",
+)
 TOOL_NAME = "live_execute"
 
 _LOG = get_logger("tools.live")
@@ -95,6 +110,22 @@ def _do_install_script(args: dict[str, Any]) -> dict[str, Any]:
     return result.to_dict()
 
 
+def _do_check_iac() -> dict[str, Any]:
+    return iac_installer.check_iac_status().to_dict()
+
+
+def _do_enable_iac() -> dict[str, Any]:
+    status = iac_installer.enable_iac_via_ui_scripting()
+    payload = status.to_dict()
+    if not status.ok:
+        payload["error"] = iac_installer.IAC_DRIVER_OFFLINE_ERROR
+        payload["hint"] = (
+            "Open Audio MIDI Setup (`open -a 'Audio MIDI Setup'`), "
+            "double-click the IAC Driver row, and check 'Device is online'."
+        )
+    return payload
+
+
 def execute(
     kind: str,
     args: dict[str, Any] | None,
@@ -120,6 +151,10 @@ def execute(
             result = _do_list_apis()
         elif kind == "install_script":
             result = _do_install_script(args)
+        elif kind == "check_iac":
+            result = _do_check_iac()
+        elif kind == "enable_iac":
+            result = _do_enable_iac()
         else:
             envelope = _envelope(
                 ok=False,
@@ -199,6 +234,9 @@ def register(server: FastMCP, runtime_factory: Callable[[], LiveRuntime]) -> Non
             "  - list_apis: enumerate every supported kind for this tool.\n"
             "  - install_script: re-run the bundled FL MIDI script installer "
             "(args: {prefer_symlink?: bool}).\n"
+            "  - check_iac: report macOS IAC Driver state (online/offline/"
+            "not_installed/unknown).\n"
+            "  - enable_iac: best-effort UI-scripting attempt to flip IAC online.\n"
             "\n"
             "Returns: {ok, kind, result, duration_ms, log_id}. Use the "
             "logs://recent resource (filter by log_id) for full call detail."
