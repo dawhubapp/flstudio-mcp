@@ -21,15 +21,16 @@ def test_main_version_flag(capsys) -> None:
     assert flstudio_mcp.__version__ in captured.out
 
 
-def test_main_no_args_returns_nonzero_until_phase_1_2_1(capsys) -> None:
-    rc = server.main([])
+def test_main_help_flag(capsys) -> None:
+    rc = server.main(["--help"])
     captured = capsys.readouterr()
-    assert rc == 1
-    assert "Phase 1.2.1" in captured.err
+    assert rc == 0
+    assert "Usage:" in captured.out
+    assert "stdio" in captured.out
 
 
-def test_console_script_installed() -> None:
-    """`flstudio-mcp --version` runs via the entry point."""
+def test_console_script_version() -> None:
+    """`python -m flstudio_mcp.server --version` runs via the entry point."""
     result = subprocess.run(
         [sys.executable, "-m", "flstudio_mcp.server", "--version"],
         capture_output=True,
@@ -38,3 +39,9 @@ def test_console_script_installed() -> None:
     )
     assert result.returncode == 0
     assert flstudio_mcp.__version__ in result.stdout
+
+
+def test_build_server_returns_fastmcp_instance() -> None:
+    instance = server.build_server()
+    assert instance.name == server.SERVER_NAME
+    assert instance.instructions == server.SERVER_INSTRUCTIONS

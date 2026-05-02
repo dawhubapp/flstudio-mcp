@@ -1,23 +1,53 @@
-"""MCP server entrypoint. Phase 1.2 fills in the FastMCP server boot."""
+"""MCP server entrypoint — FastMCP on stdio."""
 
 from __future__ import annotations
 
 import sys
 
+from mcp.server.fastmcp import FastMCP
+
 from . import __version__
+
+SERVER_NAME = "flstudio-mcp"
+SERVER_INSTRUCTIONS = (
+    "FL Studio project introspection and mutation via MCP. "
+    "Live mode talks to a running FL Studio 25.x instance over an IPC + "
+    "MIDI-script harness. Offline mode reads/writes .flp files via the "
+    "canonical TS parser from flpdiff invoked through Node. "
+    "macOS only in v1."
+)
+
+
+def build_server() -> FastMCP:
+    """Construct the FastMCP server. Tools/resources wired in later phases."""
+    return FastMCP(
+        name=SERVER_NAME,
+        instructions=SERVER_INSTRUCTIONS,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Console entrypoint. Stub until Phase 1.2.1."""
+    """Console entrypoint. `--version` prints version, otherwise serve stdio."""
     args = sys.argv[1:] if argv is None else argv
+
     if "--version" in args:
-        print(f"flstudio-mcp {__version__}")
+        print(f"{SERVER_NAME} {__version__}")
         return 0
-    print(
-        "flstudio-mcp: server boot not yet implemented (Phase 1.2.1).",
-        file=sys.stderr,
-    )
-    return 1
+
+    if "--help" in args or "-h" in args:
+        print(
+            f"{SERVER_NAME} {__version__}\n"
+            "\n"
+            "Usage: flstudio-mcp [--version] [--help]\n"
+            "\n"
+            "With no flags, runs the MCP server on stdio. Designed to be\n"
+            "invoked by an MCP client (Claude Desktop, Cursor, Codex CLI).\n"
+        )
+        return 0
+
+    server = build_server()
+    server.run(transport="stdio")
+    return 0
 
 
 if __name__ == "__main__":
