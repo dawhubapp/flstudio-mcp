@@ -7,6 +7,8 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 from . import __version__
+from .logging_setup import configure_logging, env_log_level
+from .resources import logs as logs_resource
 
 SERVER_NAME = "flstudio-mcp"
 SERVER_INSTRUCTIONS = (
@@ -19,11 +21,13 @@ SERVER_INSTRUCTIONS = (
 
 
 def build_server() -> FastMCP:
-    """Construct the FastMCP server. Tools/resources wired in later phases."""
-    return FastMCP(
+    """Construct the FastMCP server with resources registered."""
+    server = FastMCP(
         name=SERVER_NAME,
         instructions=SERVER_INSTRUCTIONS,
     )
+    logs_resource.register(server)
+    return server
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    configure_logging(level=env_log_level())
     server = build_server()
     server.run(transport="stdio")
     return 0

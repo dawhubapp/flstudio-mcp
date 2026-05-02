@@ -23,6 +23,14 @@ DEFAULT_MAX_BYTES = 1_048_576  # 1 MiB
 DEFAULT_BACKUP_COUNT = 5
 LOGGER_NAME = "flstudio_mcp"
 
+_ACTIVE_LOG_PATH: Path | None = None
+
+
+def active_log_path() -> Path | None:
+    """Return the path of the currently configured log file (or ``None``)."""
+    return _ACTIVE_LOG_PATH
+
+
 _RESERVED_LOGRECORD_KEYS = frozenset(
     {
         "args",
@@ -122,6 +130,8 @@ def configure_logging(
         stderr_handler.setFormatter(JsonFormatter())
         logger.addHandler(stderr_handler)
 
+    global _ACTIVE_LOG_PATH
+    _ACTIVE_LOG_PATH = log_path
     return log_path
 
 
@@ -141,12 +151,18 @@ def read_recent_log_lines(
     """Return the most recent ``n`` JSON log records, oldest first.
 
     Skips lines that fail to parse (e.g. partial writes during rotation).
-    Returns ``[]`` if the log file does not exist.
+    Returns ``[]`` if the log file does not exist. When ``log_dir`` is
+    omitted, prefers the currently configured log path; falls back to
+    the default location.
     """
     if n <= 0:
         return []
-    target_dir = Path(log_dir) if log_dir else DEFAULT_LOG_DIR
-    log_path = target_dir / filename
+    if log_dir is not None:
+        log_path = Path(log_dir) / filename
+    elif _ACTIVE_LOG_PATH is not None:
+        log_path = _ACTIVE_LOG_PATH
+    else:
+        log_path = DEFAULT_LOG_DIR / filename
     if not log_path.exists():
         return []
     raw = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
