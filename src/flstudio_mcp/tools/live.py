@@ -21,12 +21,13 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 
 from .. import state as state_mod
+from ..installer import midi_script as midi_installer
 from ..logging_setup import get_logger
 from ..runtime.live import LiveRuntime
 from ..telemetry import record_event
 
-LiveKind = Literal["describe", "get_tempo", "list_apis"]
-SUPPORTED_KINDS: tuple[str, ...] = ("describe", "get_tempo", "list_apis")
+LiveKind = Literal["describe", "get_tempo", "list_apis", "install_script"]
+SUPPORTED_KINDS: tuple[str, ...] = ("describe", "get_tempo", "list_apis", "install_script")
 TOOL_NAME = "live_execute"
 
 _LOG = get_logger("tools.live")
@@ -87,6 +88,13 @@ def _do_list_apis() -> dict[str, Any]:
     }
 
 
+def _do_install_script(args: dict[str, Any]) -> dict[str, Any]:
+    """Re-run the MIDI script installer. Optional ``prefer_symlink`` arg."""
+    prefer_symlink = bool(args.get("prefer_symlink", False))
+    result = midi_installer.install_midi_script(prefer_symlink=prefer_symlink)
+    return result.to_dict()
+
+
 def execute(
     kind: str,
     args: dict[str, Any] | None,
@@ -110,6 +118,8 @@ def execute(
             result = _do_get_tempo(runtime)
         elif kind == "list_apis":
             result = _do_list_apis()
+        elif kind == "install_script":
+            result = _do_install_script(args)
         else:
             envelope = _envelope(
                 ok=False,
@@ -187,6 +197,8 @@ def register(server: FastMCP, runtime_factory: Callable[[], LiveRuntime]) -> Non
             "channel/pattern/insert counts, FL version).\n"
             "  - get_tempo: return current tempo in BPM.\n"
             "  - list_apis: enumerate every supported kind for this tool.\n"
+            "  - install_script: re-run the bundled FL MIDI script installer "
+            "(args: {prefer_symlink?: bool}).\n"
             "\n"
             "Returns: {ok, kind, result, duration_ms, log_id}. Use the "
             "logs://recent resource (filter by log_id) for full call detail."

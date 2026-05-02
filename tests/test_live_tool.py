@@ -106,7 +106,21 @@ def test_list_apis_enumerates_kinds(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert env["ok"] is True
     assert env["result"]["tool"] == live_tool.TOOL_NAME
     assert set(env["result"]["kinds"]) == set(live_tool.SUPPORTED_KINDS)
+    assert "install_script" in env["result"]["kinds"]
     assert rt.sent == []  # purely local
+
+
+def test_install_script_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _state_dir(tmp_path, monkeypatch)
+    hw = tmp_path / "Hardware"
+    hw.mkdir()
+    monkeypatch.setenv("FLSTUDIO_MCP_HARDWARE_DIR", str(hw))
+    rt = FakeRuntime()
+    env = live_tool.execute("install_script", None, runtime=rt)
+    assert env["ok"] is True
+    assert env["result"]["action"] == "installed"
+    assert (hw / "device_flstudio_mcp.py").exists()
+    assert rt.sent == []  # local op only
 
 
 def test_unsupported_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
