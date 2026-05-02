@@ -1,0 +1,225 @@
+"""Auto-install the bundled FL Studio MIDI script.
+
+Per Phase 1.4 of MCP-SPEC.md: detect FL's Hardware dir, hash-compare
+the bundled script against the installed copy, install (symlink in
+dev, copy in production) if missing or stale, drop a sidecar version
+stamp.
+
+Idempotent — running twice with no changes makes no writes.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import time
+from collections.abc import Iterable
+from dataclasses import dataclass
+from enum import StrEnum
+from importlib import resources
+from pathlib import Path
+
+from .. import __version__
+from ..logging_setup import get_logger
+
+DEFAULT_FL_HARDWARE_DIR = (
+    Path.home() / "Documents" / "Image-Line" / "FL Studio" / "Settings" / "Hardware"
+)
+SCRIPT_FILENAME = "device_flstudio_mcp.py"
+VERSION_STAMP_SUFFIX = ".version.json"
+PACKAGE_DATA = "flstudio_mcp.fl_script"
+
+_LOG = get_logger("installer.midi_script")
+
+
+class InstallAction(StrEnum):
+    """Outcome of a single install attempt."""
+
+    NOOP = "noop"  # bundled hash matches installed
+    INSTALLED = "installed"  # no prior copy
+    UPDATED = "updated"  # bundled hash differs
+    HARDWARE_DIR_MISSING = "hardware_dir_missing"
+
+
+@dataclass(frozen=True)
+class InstallResult:
+    action: InstallAction
+    target_path: Path
+    bundled_hash: str
+    installed_hash: str | None
+    used_symlink: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "action": self.action.value,
+            "target_path": str(self.target_path),
+            "bundled_hash": self.bundled_hash,
+            "installed_hash": self.installed_hash,
+            "used_symlink": self.used_symlink,
+        }
+
+
+def bundled_script_path() -> Path:
+    """Return the on-disk path of the bundled MIDI script."""
+    return Path(str(resources.files(PACKAGE_DATA).joinpath(SCRIPT_FILENAME)))
+
+
+def hardware_dir(override: Path | None = None) -> Path:
+    """Return the FL Studio Hardware dir, with optional explicit override."""
+    if override is not None:
+        return Path(override)
+    env = os.environ.get("FLSTUDIO_MCP_HARDWARE_DIR")
+    if env:
+        return Path(env).expanduser()
+    return DEFAULT_FL_HARDWARE_DIR
+
+
+def file_sha256(path: Path) -> str:
+    """SHA-256 hash of a file, hex digest."""
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _hash_or_none(path: Path) -> str | None:
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        return file_sha256(path)
+    except OSError:
+        return None
+
+
+def _write_version_stamp(target: Path, *, bundled_hash: str, used_symlink: bool) -> None:
+    stamp = {
+        "package_version": __version__,
+        "script_sha256": bundled_hash,
+        "installed_at": time.time(),
+        "used_symlink": used_symlink,
+    }
+    stamp_path = target.with_suffix(target.suffix + VERSION_STAMP_SUFFIX)
+    stamp_path.write_text(
+        json.dumps(stamp, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def install_midi_script(
+    *,
+    hardware_dir_path: Path | None = None,
+    prefer_symlink: bool = False,
+    create_hardware_dir: bool = False,
+) -> InstallResult:
+    """Install or refresh the bundled MIDI script.
+
+    Parameters
+    ----------
+    hardware_dir_path
+        Override for FL's Hardware dir (else env var or default).
+    prefer_symlink
+        Symlink the bundled file instead of copying. Useful for dev
+        loops; production installs default to copy so the file survives
+        package upgrades cleanly.
+    create_hardware_dir
+        If True and the Hardware dir doesn't exist, create it. Default
+        False — a missing dir usually means FL isn't installed and the
+        installer should report that distinctly rather than silently
+        creating it.
+    """
+    bundled = bundled_script_path()
+    if not bundled.exists():
+        raise FileNotFoundError(f"bundled MIDI script missing: {bundled}")
+
+    hw_dir = hardware_dir(hardware_dir_path)
+    if not hw_dir.exists():
+        if not create_hardware_dir:
+            _LOG.warning(
+                "FL Hardware dir missing",
+                extra={"hardware_dir": str(hw_dir)},
+            )
+            return InstallResult(
+                action=InstallAction.HARDWARE_DIR_MISSING,
+                target_path=hw_dir / SCRIPT_FILENAME,
+                bundled_hash=file_sha256(bundled),
+                installed_hash=None,
+                used_symlink=False,
+            )
+        hw_dir.mkdir(parents=True, exist_ok=True)
+
+    target = hw_dir / SCRIPT_FILENAME
+    bundled_hash = file_sha256(bundled)
+    installed_hash = _hash_or_none(target)
+
+    if installed_hash == bundled_hash:
+        _LOG.info(
+            "MIDI script already up to date",
+            extra={"target": str(target), "sha256": bundled_hash},
+        )
+        return InstallResult(
+            action=InstallAction.NOOP,
+            target_path=target,
+            bundled_hash=bundled_hash,
+            installed_hash=installed_hash,
+            used_symlink=target.is_symlink(),
+        )
+
+    action = (
+        InstallAction.UPDATED if target.exists() or target.is_symlink() else InstallAction.INSTALLED
+    )
+
+    if target.exists() or target.is_symlink():
+        target.unlink()
+
+    used_symlink = False
+    if prefer_symlink:
+        try:
+            target.symlink_to(bundled)
+            used_symlink = True
+        except OSError as exc:
+            _LOG.warning(
+                "symlink failed; falling back to copy",
+                extra={"target": str(target), "error": str(exc)},
+            )
+            shutil.copy2(bundled, target)
+    else:
+        shutil.copy2(bundled, target)
+
+    _write_version_stamp(target, bundled_hash=bundled_hash, used_symlink=used_symlink)
+    _LOG.info(
+        "MIDI script installed",
+        extra={
+            "action": action.value,
+            "target": str(target),
+            "sha256": bundled_hash,
+            "used_symlink": used_symlink,
+        },
+    )
+    return InstallResult(
+        action=action,
+        target_path=target,
+        bundled_hash=bundled_hash,
+        installed_hash=installed_hash,
+        used_symlink=used_symlink,
+    )
+
+
+def installed_version_stamp(target: Path) -> dict | None:
+    """Return parsed sidecar stamp for ``target`` or ``None`` if missing."""
+    stamp_path = target.with_suffix(target.suffix + VERSION_STAMP_SUFFIX)
+    if not stamp_path.exists():
+        return None
+    try:
+        return json.loads(stamp_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def iter_install_paths(
+    hardware_dir_path: Path | None = None,
+) -> Iterable[Path]:
+    """Yield candidate install targets — useful for cleanup tooling."""
+    yield hardware_dir(hardware_dir_path) / SCRIPT_FILENAME

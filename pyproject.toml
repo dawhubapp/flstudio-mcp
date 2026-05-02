@@ -63,7 +63,7 @@ src = ["src", "tests"]
 # fl_script/ is deployed verbatim into FL Studio's embedded Python — keep
 # it free of stylistic auto-modifications and lint noise from rules that
 # don't apply (FL's interpreter is older, sandboxed, no contextlib needed).
-extend-exclude = ["fl_script"]
+extend-exclude = ["**/fl_script/device_*.py"]
 
 [tool.ruff.lint]
 select = [
