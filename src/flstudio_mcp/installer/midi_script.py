@@ -40,12 +40,21 @@ SCRIPT_FILENAME = "device_flstudio_mcp.py"
 VERSION_STAMP_SUFFIX = ".version.json"
 PACKAGE_DATA = "flstudio_mcp.fl_script"
 
-# Runtime IPC directory layout. Must match re_harness.ipc.DEFAULT_RUNTIME_ROOT.
-# Pre-created here because FL Studio's sandboxed Python cannot makedirs
-# fresh subdirs under ~/Documents/... — the in-FL script's own
-# _ensure_dirs() silently fails otherwise on first launch.
-RUNTIME_SUBDIR = Path("flpdiff-harness") / "runtime"
+# Runtime IPC directory layout. MUST live inside the same Hardware
+# subdir as the installed script — FL's sandbox only allows writes
+# within the script's own directory tree. Anywhere else returns
+# `<class '_io.FileIO'> returned NULL` even when the dir exists.
+#
+# Pre-created here because FL Studio's sandboxed Python also cannot
+# makedirs fresh subdirs under ~/Documents/...
+RUNTIME_SUBDIR = Path(SCRIPT_SUBDIR) / "runtime"
 RUNTIME_LEAF_DIRS = ("inbox", "outbox", "processed")
+
+
+def runtime_root_for(hardware_dir_path: Path) -> Path:
+    """Absolute path of the IPC runtime root for a given Hardware dir."""
+    return hardware_dir_path / RUNTIME_SUBDIR
+
 
 _LOG = get_logger("installer.midi_script")
 

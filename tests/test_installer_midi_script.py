@@ -184,6 +184,34 @@ def test_install_to_all_fl_versions(tmp_path: Path) -> None:
         assert r.target_path.parent.name == midi_script.SCRIPT_SUBDIR
 
 
+def test_runtime_subdir_lives_under_script_subdir() -> None:
+    """FL sandbox only allows writes inside the script's own Hardware subdir."""
+    assert str(midi_script.RUNTIME_SUBDIR).startswith(midi_script.SCRIPT_SUBDIR + "/")
+
+
+def test_runtime_root_for_returns_path() -> None:
+    hw = Path("/tmp/Hardware")
+    root = midi_script.runtime_root_for(hw)
+    assert root == hw / midi_script.SCRIPT_SUBDIR / "runtime"
+
+
+def test_fl_script_default_inbox_matches_installer() -> None:
+    """In-FL script's hardcoded default must match installer's RUNTIME_SUBDIR.
+
+    re_harness.ipc reads FLPDIFF_HARNESS_INBOX env var, but if the env
+    var is unset the FL script falls back to its hardcoded default.
+    Both sides must agree, otherwise the script writes to one path and
+    the orchestrator polls another.
+    """
+    script_path = midi_script.bundled_script_path()
+    text = script_path.read_text(encoding="utf-8")
+    expected_segment = str(midi_script.RUNTIME_SUBDIR).replace("\\", "/")
+    assert expected_segment in text, (
+        f"FL script's DEFAULT_INBOX_ROOT must contain {expected_segment!r}; "
+        f"if installer.RUNTIME_SUBDIR changes, update fl_script default too."
+    )
+
+
 def test_install_to_all_no_fl_returns_hardware_dir_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

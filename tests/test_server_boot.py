@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,29 @@ def test_missing_hardware_dir_warns_in_instructions(
     assert results[0].action == midi.InstallAction.HARDWARE_DIR_MISSING
     instance = server.build_server(install_result=results)
     assert "Hardware dir was not found" in (instance.instructions or "")
+
+
+def test_sync_runtime_env_points_at_script_subdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """re_harness env var must align with FL script's runtime path."""
+    monkeypatch.setenv("FLSTUDIO_MCP_HARDWARE_DIR", str(tmp_path / "Hardware"))
+    monkeypatch.delenv(server.RE_HARNESS_INBOX_ENV, raising=False)
+
+    server._sync_runtime_env()
+    expected = tmp_path / "Hardware" / midi.RUNTIME_SUBDIR
+    assert os.environ[server.RE_HARNESS_INBOX_ENV] == str(expected)
+    # Path matches what FL script writes to (flstudio-mcp/runtime, not legacy
+    # flpdiff-harness/runtime).
+    assert "flstudio-mcp/runtime" in os.environ[server.RE_HARNESS_INBOX_ENV]
+
+
+def test_sync_runtime_env_does_not_override_explicit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(server.RE_HARNESS_INBOX_ENV, "/explicit/path")
+    server._sync_runtime_env()
+    assert os.environ[server.RE_HARNESS_INBOX_ENV] == "/explicit/path"
 
 
 def test_auto_install_to_all_fl_versions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -16,7 +16,25 @@ from .runtime.live import LiveRuntime, default_runtime
 from .tools import live as live_tool
 
 NO_AUTO_INSTALL_ENV = "FLSTUDIO_MCP_NO_AUTO_INSTALL"
+RE_HARNESS_INBOX_ENV = "FLPDIFF_HARNESS_INBOX"
 _LOG = get_logger("server")
+
+
+def _sync_runtime_env() -> None:
+    """Point re_harness.ipc at the same runtime path the FL script uses.
+
+    re_harness.ipc.DEFAULT_RUNTIME_ROOT historically pointed at
+    `flpdiff-harness/runtime` (legacy from the flpdiff RE harness). The
+    flstudio-mcp script now lives + writes under `flstudio-mcp/runtime`
+    because FL's sandbox only allows writes inside the script's own
+    Hardware subdir. Set the env var before re_harness imports cache
+    the legacy default.
+    """
+    if RE_HARNESS_INBOX_ENV in os.environ:
+        return  # explicit override wins
+    target = midi_script_installer.runtime_root_for(midi_script_installer.hardware_dir())
+    os.environ[RE_HARNESS_INBOX_ENV] = str(target)
+
 
 SERVER_NAME = "flstudio-mcp"
 SERVER_INSTRUCTIONS = (
@@ -129,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     configure_logging(level=env_log_level())
+    _sync_runtime_env()
     install_result = auto_install_midi_script()
     server = build_server(install_result=install_result)
     server.run(transport="stdio")

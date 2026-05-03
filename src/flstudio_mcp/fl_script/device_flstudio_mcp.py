@@ -86,7 +86,7 @@ except ImportError:
 # (every mkdir returns NULL with no exception). Sitting inside FL's own
 # Hardware tree works because FL already writes its settings there.
 DEFAULT_INBOX_ROOT = os.path.expanduser(
-    "~/Documents/Image-Line/FL Studio/Settings/Hardware/flpdiff-harness/runtime"
+    "~/Documents/Image-Line/FL Studio/Settings/Hardware/flstudio-mcp/runtime"
 )
 INBOX_ROOT = os.environ.get("FLPDIFF_HARNESS_INBOX", DEFAULT_INBOX_ROOT)
 
