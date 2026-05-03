@@ -12,6 +12,7 @@ from . import __version__
 from .installer import midi_script as midi_script_installer
 from .logging_setup import configure_logging, env_log_level, get_logger
 from .resources import logs as logs_resource
+from .resources import snapshots as snapshots_resource
 from .runtime.live import LiveRuntime, default_runtime
 from .tools import live as live_tool
 
@@ -97,6 +98,7 @@ def build_server(
         instructions=_compose_instructions(install_result),
     )
     logs_resource.register(server)
+    snapshots_resource.register(server)
     live_tool.register(server, runtime_factory)
     return server
 
