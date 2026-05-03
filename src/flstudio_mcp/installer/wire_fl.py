@@ -54,17 +54,19 @@ class WindowBounds:
 class WireCoords:
     """Pixel offsets from the Settings dialog top-left.
 
-    Calibrated for FL Studio 2025.x at default theme. If the layout
-    shifts, override these via the ``coords`` arg of
-    ``wire_flstudio_mcp_input``.
+    Calibrated for FL Studio 2025.x at default theme + 668x894 dialog
+    bounds. If the layout shifts, override these via the ``coords`` arg
+    of ``wire_flstudio_mcp_input`` / ``reload_script_via_midi_settings``.
     """
 
-    update_scripts_btn: tuple[int, int] = (375, 770)
+    # Live-verified offsets (Roman confirmed cursor landed on each):
+    update_scripts_btn: tuple[int, int] = (242, 854)
     iac_input_row: tuple[int, int] = (180, 420)
-    enable_radio: tuple[int, int] = (110, 555)
+    # Enable radio (red dot) — verified via crop measurement at logical
+    # (45, 41) within the (422,600,668,80) crop. dialog y=63, so offset
+    # (45, 41+600-63) = (45, 578).
+    enable_radio: tuple[int, int] = (45, 578)
     controller_dropdown: tuple[int, int] = (560, 555)
-    # After the dropdown opens, type-to-search jumps to the first
-    # matching entry. Leave a moment for the popup to settle.
 
 
 @dataclass
@@ -200,6 +202,104 @@ def _import_pyautogui():
         ) from exc
     pyautogui.FAILSAFE = False  # don't bail when cursor hits screen corner
     return pyautogui
+
+
+def reload_script_via_midi_settings(
+    *,
+    coords: WireCoords | None = None,
+    dry_run: bool = False,
+) -> WireResult:
+    """Click FL's 'Update MIDI scripts' button + cycle Enable to reload.
+
+    **Live verified (2026-05-03): does NOT actually reload a running
+    script.** FL caches the script instance; neither 'Update MIDI
+    scripts' nor toggling Enable forces a re-init. Empirically the only
+    methods that DO reload a stale script:
+
+      * Restart FL Studio (hard but reliable)
+      * Change Controller type to '(generic controller)' then back to
+        'flstudio-mcp' (the dropdown cycle is brittle to automate, see
+        decision #27)
+
+    This function is kept so the click sequence is automatable for
+    cases where FL's behavior changes in a future build, but callers
+    should treat the post-call state as "best effort" and verify by
+    sending a kind that's only present in the new script version.
+    """
+    coords = coords or WireCoords()
+    steps: list[WireStep] = []
+
+    process_name = _detect_fl_process_name()
+    if not process_name:
+        return WireResult(
+            ok=False,
+            summary="FL Studio is not running",
+            steps=[WireStep("detect_fl", False, "no FL process found")],
+        )
+    steps.append(WireStep("detect_fl", True, f"process={process_name}"))
+
+    ok, bounds_or_err = open_midi_settings(process_name)
+    if not ok:
+        steps.append(WireStep("open_midi_settings", False, str(bounds_or_err)))
+        return WireResult(ok=False, summary="could not open MIDI Settings dialog", steps=steps)
+    bounds = bounds_or_err  # type: ignore[assignment]
+    steps.append(WireStep("open_midi_settings", True, f"bounds={bounds.to_dict()}"))
+
+    if dry_run:
+        return WireResult(
+            ok=True,
+            summary="dry run — no click performed",
+            steps=steps,
+            window=bounds,
+        )
+
+    try:
+        pg = _import_pyautogui()
+    except RuntimeError as exc:
+        steps.append(WireStep("import_pyautogui", False, str(exc)))
+        return WireResult(ok=False, summary=str(exc), steps=steps, window=bounds)
+
+    # Step 1: Update MIDI scripts (re-discovers Hardware/)
+    target = bounds.offset(*coords.update_scripts_btn)
+    pg.click(*target)
+    time.sleep(CLICK_SETTLE_S)
+    steps.append(
+        WireStep(
+            "click_update_scripts",
+            True,
+            f"clicked at {target} (offset {coords.update_scripts_btn} from dialog)",
+        )
+    )
+
+    # Step 2: toggle Enable radio off → on. Required because Update
+    # MIDI scripts only re-DISCOVERS scripts, doesn't re-INITIALIZE
+    # an already-loaded one. Toggling Enable forces FL to drop the
+    # running script instance and load the fresh disk version.
+    enable_target = bounds.offset(*coords.enable_radio)
+    pg.click(*enable_target)
+    time.sleep(0.4)
+    pg.click(*enable_target)
+    time.sleep(CLICK_SETTLE_S)
+    steps.append(
+        WireStep(
+            "toggle_enable",
+            True,
+            f"clicked Enable twice at {enable_target} (off then on) to force re-init",
+        )
+    )
+
+    return WireResult(
+        ok=True,
+        summary=(
+            "clicked Update MIDI scripts + toggled Enable off/on. NOTE: live-"
+            "verified that this does NOT actually reload a running script in "
+            "FL 2025 — FL caches the script instance. Restart FL or cycle "
+            "Controller type manually to load updated handlers. Send a kind "
+            "only present in the new version to verify."
+        ),
+        steps=steps,
+        window=bounds,
+    )
 
 
 def wire_flstudio_mcp_input(

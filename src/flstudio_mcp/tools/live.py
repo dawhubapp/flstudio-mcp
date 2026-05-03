@@ -45,6 +45,7 @@ KINDS_SKIPPING_PREFLIGHT: frozenset[str] = frozenset(
         "enable_iac",
         "verify_setup",  # has its own internal chain
         "wire_input",
+        "reload_script",
     }
 )
 
@@ -57,6 +58,7 @@ LiveKind = Literal[
     "enable_iac",
     "verify_setup",
     "wire_input",
+    "reload_script",
     # Phase 2.2 mutations
     "set_tempo",
     "set_time_signature",
@@ -70,6 +72,10 @@ LiveKind = Literal[
     "save",
     "get_plugin_info",
     "restore_snapshot",
+    # Phase 2.3 step-sequencer
+    "set_step",
+    "clear_pattern_steps",
+    "get_pattern_steps",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -80,6 +86,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "enable_iac",
     "verify_setup",
     "wire_input",
+    "reload_script",
     *_mutations.kinds_in_scope(),
 )
 TOOL_NAME = "live_execute"
@@ -250,6 +257,15 @@ def _do_wire_input(args: dict[str, Any]) -> dict[str, Any]:
     return result.to_dict()
 
 
+def _do_reload_script(args: dict[str, Any]) -> dict[str, Any]:
+    """Click FL's 'Update MIDI scripts' button so updated scripts get loaded."""
+    dry_run = bool(args.get("dry_run", False))
+    coords_override = args.get("coords")
+    coords = wire_fl_installer.WireCoords(**coords_override) if coords_override else None
+    result = wire_fl_installer.reload_script_via_midi_settings(coords=coords, dry_run=dry_run)
+    return result.to_dict()
+
+
 def _do_check_iac() -> dict[str, Any]:
     return iac_installer.check_iac_status().to_dict()
 
@@ -337,6 +353,8 @@ def execute(
             result = _do_verify_setup(args, runtime)
         elif kind == "wire_input":
             result = _do_wire_input(args)
+        elif kind == "reload_script":
+            result = _do_reload_script(args)
         elif kind == "restore_snapshot":
             result = _mutations.execute_restore_snapshot(args, snapshot_store=snapshot_store)
         elif kind in _mutations.MUTATIONS or kind in _mutations.READ_KINDS:

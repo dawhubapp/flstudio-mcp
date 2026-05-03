@@ -113,6 +113,24 @@ class SaveArgs(BaseModel):
     pass
 
 
+class SetStepArgs(BaseModel):
+    channel: int = Field(..., ge=0, description="Channel-rack index, 0-based.")
+    step: int = Field(
+        ..., ge=0, le=255, description="Step index inside the active pattern, 0-based."
+    )
+    on: bool = Field(..., description="True = lit step, False = empty.")
+
+
+class GetPatternStepsArgs(BaseModel):
+    channel: int = Field(..., ge=0, description="Channel-rack index, 0-based.")
+    count: int = Field(default=16, ge=1, le=256, description="Steps to read (1..256).")
+
+
+class ClearPatternStepsArgs(BaseModel):
+    channel: int = Field(..., ge=0, description="Channel-rack index, 0-based.")
+    count: int = Field(default=16, ge=1, le=256, description="Steps to clear (1..256).")
+
+
 class RestoreSnapshotArgs(BaseModel):
     snapshot_id: str = Field(..., min_length=3)
 
@@ -141,10 +159,14 @@ MUTATIONS: dict[str, MutationKind] = {
     "set_plugin_param": MutationKind("set_plugin_param", SetPluginParamArgs),
     "set_mixer_eq": MutationKind("set_mixer_eq", SetMixerEqArgs),
     "save": MutationKind("save", SaveArgs, snapshot=False),
+    # Phase 2.3 step-sequencer ops
+    "set_step": MutationKind("set_step", SetStepArgs),
+    "clear_pattern_steps": MutationKind("clear_pattern_steps", ClearPatternStepsArgs),
 }
 
 READ_KINDS: dict[str, MutationKind] = {
     "get_plugin_info": MutationKind("get_plugin_info", GetPluginInfoArgs, snapshot=False),
+    "get_pattern_steps": MutationKind("get_pattern_steps", GetPatternStepsArgs, snapshot=False),
 }
 
 ALL_KINDS: tuple[str, ...] = (*sorted(MUTATIONS), *sorted(READ_KINDS), "restore_snapshot")

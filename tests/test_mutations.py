@@ -310,8 +310,91 @@ def test_kinds_in_scope_includes_all_mutations() -> None:
         "save",
         "get_plugin_info",
         "restore_snapshot",
+        # Phase 2.3 step-sequencer
+        "set_step",
+        "clear_pattern_steps",
+        "get_pattern_steps",
     }
     assert expected <= set(kinds)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.3 step-sequencer
+# --------------------------------------------------------------------------- #
+
+
+def test_set_step_validates() -> None:
+    table = _mutations._validation_dispatch_table()
+    assert table["set_step"]({"channel": 0, "step": 4, "on": True}) == {
+        "channel": 0,
+        "step": 4,
+        "on": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {},
+        {"channel": -1, "step": 0, "on": True},
+        {"channel": 0, "step": -1, "on": True},
+        {"channel": 0, "step": 256, "on": True},
+        {"channel": 0, "step": 0},  # missing 'on'
+    ],
+)
+def test_set_step_invalid(args: dict) -> None:
+    table = _mutations._validation_dispatch_table()
+    with pytest.raises(ToolError) as exc:
+        table["set_step"](args)
+    assert exc.value.code == ErrorCode.INVALID_ARGS
+
+
+def test_get_pattern_steps_default_count() -> None:
+    table = _mutations._validation_dispatch_table()
+    assert table["get_pattern_steps"]({"channel": 0}) == {"channel": 0, "count": 16}
+
+
+def test_clear_pattern_steps_count_range() -> None:
+    table = _mutations._validation_dispatch_table()
+    with pytest.raises(ToolError):
+        table["clear_pattern_steps"]({"channel": 0, "count": 0})
+    with pytest.raises(ToolError):
+        table["clear_pattern_steps"]({"channel": 0, "count": 257})
+
+
+def test_set_step_snapshots_then_sends_ipc(runtime, store) -> None:
+    result = _mutations.execute_mutation(
+        "set_step",
+        {"channel": 0, "step": 4, "on": True},
+        runtime=runtime,
+        snapshot_store=store,
+    )
+    assert "snapshot_id" in result
+    assert ("set_step", {"channel": 0, "step": 4, "on": True}) in runtime.sent
+
+
+def test_clear_pattern_steps_snapshots(runtime, store) -> None:
+    result = _mutations.execute_mutation(
+        "clear_pattern_steps",
+        {"channel": 0},
+        runtime=runtime,
+        snapshot_store=store,
+    )
+    assert "snapshot_id" in result
+    # Default count of 16 forwarded to FL
+    assert ("clear_pattern_steps", {"channel": 0, "count": 16}) in runtime.sent
+
+
+def test_get_pattern_steps_skips_snapshot(runtime, store) -> None:
+    result = _mutations.execute_mutation(
+        "get_pattern_steps",
+        {"channel": 0, "count": 8},
+        runtime=runtime,
+        snapshot_store=store,
+    )
+    assert "snapshot_id" not in result
+    assert store.list_snapshots() == []
+    assert ("get_pattern_steps", {"channel": 0, "count": 8}) in runtime.sent
 
 
 def test_tool_description_lists_every_kind() -> None:

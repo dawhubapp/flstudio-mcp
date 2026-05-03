@@ -499,6 +499,85 @@ def _handle_set_pattern_name(args):
     return "ok", "pattern {0} renamed to {1!r}".format(iid, name), None
 
 
+def _handle_set_step(args):
+    """Toggle a step-sequencer step on/off via ``channels.setGridBit``.
+
+    Args:
+        channel:    channel-rack index (0-based).
+        step:       step index inside the current pattern (0-based, typically 0..15).
+        on:         bool; True = lit step, False = empty.
+    """
+    if not INSIDE_FL:
+        return "unsupported", "not running inside FL Studio", None
+    try:
+        channel = int(args.get("channel"))
+        step = int(args.get("step"))
+        on = bool(args.get("on"))
+    except (TypeError, ValueError):
+        return "error", "channel/step/on missing or wrong type", None
+    try:
+        channels.setGridBit(channel, step, 1 if on else 0)  # type: ignore[name-defined]
+    except Exception as exc:
+        return "error", "setGridBit({0},{1}): {2}".format(channel, step, exc), None
+    return "ok", "channel {0} step {1} {2}".format(channel, step, "on" if on else "off"), None
+
+
+def _handle_get_pattern_steps(args):
+    """Read all step-sequencer bits + per-step velocities for one channel.
+
+    Args:
+        channel:    channel-rack index (0-based).
+        count:      number of steps to read (default 16).
+
+    Returns: JSON ``{"channel": int, "steps": [{"step": i, "on": bool}, ...]}``.
+    """
+    if not INSIDE_FL:
+        return "unsupported", "not running inside FL Studio", None
+    try:
+        channel = int(args.get("channel"))
+        count = int(args.get("count", 16))
+    except (TypeError, ValueError):
+        return "error", "channel/count missing or wrong type", None
+    if count <= 0 or count > 256:
+        return "error", "count must be 1..256", None
+    out_steps = []
+    for i in range(count):
+        try:
+            bit = channels.getGridBit(channel, i)  # type: ignore[name-defined]
+        except Exception as exc:
+            return "error", "getGridBit({0},{1}): {2}".format(channel, i, exc), None
+        out_steps.append({"step": i, "on": bool(bit)})
+    payload = json.dumps({"channel": channel, "count": count, "steps": out_steps},
+                         sort_keys=True)
+    return "ok", payload, None
+
+
+def _handle_clear_pattern_steps(args):
+    """Set every step in [0..count) to OFF for the given channel.
+
+    Args:
+        channel:    channel-rack index (0-based).
+        count:      number of steps to clear (default 16).
+    """
+    if not INSIDE_FL:
+        return "unsupported", "not running inside FL Studio", None
+    try:
+        channel = int(args.get("channel"))
+        count = int(args.get("count", 16))
+    except (TypeError, ValueError):
+        return "error", "channel/count missing or wrong type", None
+    if count <= 0 or count > 256:
+        return "error", "count must be 1..256", None
+    cleared = 0
+    for i in range(count):
+        try:
+            channels.setGridBit(channel, i, 0)  # type: ignore[name-defined]
+            cleared += 1
+        except Exception as exc:
+            return "error", "setGridBit({0},{1}): {2}".format(channel, i, exc), None
+    return "ok", "cleared {0} steps on channel {1}".format(cleared, channel), None
+
+
 def _handle_save(args):
     """Trigger FL's 'Save' action. Saves to the currently-open file path.
 
@@ -534,6 +613,10 @@ _HANDLERS = {
     "set_plugin_param": _handle_set_plugin_param,
     "get_plugin_info": _handle_get_plugin_info,
     "save": _handle_save,
+    # Phase 2.3 — step-sequencer ops (channels.setGridBit/getGridBit)
+    "set_step": _handle_set_step,
+    "get_pattern_steps": _handle_get_pattern_steps,
+    "clear_pattern_steps": _handle_clear_pattern_steps,
 }
 
 
