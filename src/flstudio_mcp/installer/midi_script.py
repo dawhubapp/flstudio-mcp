@@ -24,9 +24,14 @@ from pathlib import Path
 from .. import __version__
 from ..logging_setup import get_logger
 
-DEFAULT_FL_HARDWARE_DIR = (
-    Path.home() / "Documents" / "Image-Line" / "FL Studio" / "Settings" / "Hardware"
-)
+FL_USERDATA_PARENT = Path.home() / "Documents" / "Image-Line"
+# Modern FL versions (2024+) share a single ~/Documents/Image-Line/FL Studio/
+# user-data dir regardless of installed FL exe version. Older versions
+# sometimes used ~/Documents/Image-Line/FL Studio 20/ / FL Studio 21/ etc.
+# discover_fl_hardware_dirs() handles both shapes.
+FL_USERDATA_GLOB = "FL Studio*"
+SETTINGS_SUBPATH = Path("Settings") / "Hardware"
+DEFAULT_FL_HARDWARE_DIR = FL_USERDATA_PARENT / "FL Studio" / SETTINGS_SUBPATH
 # FL Studio scans `Settings/Hardware/<subdir>/device_*.py` — scripts at
 # the Hardware/ root are NOT discovered. The subdir name doesn't have
 # to match the script name but using the same name keeps things sane.
@@ -87,6 +92,24 @@ def hardware_dir(override: Path | None = None) -> Path:
     if env:
         return Path(env).expanduser()
     return DEFAULT_FL_HARDWARE_DIR
+
+
+def discover_fl_hardware_dirs(parent: Path | None = None) -> list[Path]:
+    """Return every existing ``FL Studio*/Settings/Hardware/`` directory.
+
+    Catches both the modern shared layout (single ``FL Studio/``) and
+    legacy per-version layouts (``FL Studio 20/``, ``FL Studio 21/``,
+    ``FL Studio 2024/``, …).
+    """
+    root = parent or FL_USERDATA_PARENT
+    if not root.exists():
+        return []
+    found: list[Path] = []
+    for child in sorted(root.glob(FL_USERDATA_GLOB)):
+        candidate = child / SETTINGS_SUBPATH
+        if candidate.is_dir():
+            found.append(candidate)
+    return found
 
 
 def file_sha256(path: Path) -> str:
@@ -241,6 +264,33 @@ def install_midi_script(
         used_symlink=used_symlink,
         runtime_dirs=runtime_dirs,
     )
+
+
+def install_to_all_fl_versions(
+    *,
+    prefer_symlink: bool = False,
+    parent: Path | None = None,
+) -> list[InstallResult]:
+    """Install the MIDI script into every detected FL Studio Hardware dir.
+
+    Discovers ``~/Documents/Image-Line/FL Studio*/Settings/Hardware/``
+    and installs into each. Idempotent — already-current installs
+    return NOOP. If no dirs are found, returns a single
+    HARDWARE_DIR_MISSING result for the default location so callers
+    can surface a clear message.
+    """
+    dirs = discover_fl_hardware_dirs(parent)
+    if not dirs:
+        return [
+            install_midi_script(
+                hardware_dir_path=DEFAULT_FL_HARDWARE_DIR,
+                prefer_symlink=prefer_symlink,
+            )
+        ]
+    results: list[InstallResult] = []
+    for hw in dirs:
+        results.append(install_midi_script(hardware_dir_path=hw, prefer_symlink=prefer_symlink))
+    return results
 
 
 def installed_version_stamp(target: Path) -> dict | None:

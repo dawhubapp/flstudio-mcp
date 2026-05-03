@@ -104,10 +104,30 @@ def _do_list_apis() -> dict[str, Any]:
 
 
 def _do_install_script(args: dict[str, Any]) -> dict[str, Any]:
-    """Re-run the MIDI script installer. Optional ``prefer_symlink`` arg."""
+    """Re-run the MIDI script installer.
+
+    By default installs into every detected ``FL Studio*/Settings/Hardware/``
+    so multi-version installs all see the script. Args:
+
+    * ``prefer_symlink: bool`` — symlink instead of copy.
+    * ``hardware_dir: str`` — override target. When set, installs only
+      into that single dir (no auto-discovery).
+    """
     prefer_symlink = bool(args.get("prefer_symlink", False))
-    result = midi_installer.install_midi_script(prefer_symlink=prefer_symlink)
-    return result.to_dict()
+    override = args.get("hardware_dir")
+    if override:
+        from pathlib import Path
+
+        result = midi_installer.install_midi_script(
+            hardware_dir_path=Path(str(override)).expanduser(),
+            prefer_symlink=prefer_symlink,
+        )
+        return {"installs": [result.to_dict()]}
+    results = midi_installer.install_to_all_fl_versions(prefer_symlink=prefer_symlink)
+    return {
+        "installs": [r.to_dict() for r in results],
+        "count": len(results),
+    }
 
 
 def _do_check_iac() -> dict[str, Any]:

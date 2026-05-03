@@ -150,3 +150,45 @@ def test_ensure_runtime_dirs_returns_paths(tmp_path: Path) -> None:
     out = midi_script.ensure_runtime_dirs(tmp_path)
     assert all(p.is_dir() for p in out)
     assert {p.name for p in out} == set(midi_script.RUNTIME_LEAF_DIRS)
+
+
+def test_discover_fl_hardware_dirs_finds_all_versions(tmp_path: Path) -> None:
+    parent = tmp_path / "Image-Line"
+    for ver in ("FL Studio", "FL Studio 21", "FL Studio 2024", "FL Studio 2025"):
+        (parent / ver / "Settings" / "Hardware").mkdir(parents=True)
+    # Non-FL dirs should be ignored
+    (parent / "Edison").mkdir(parents=True)
+    (parent / "FL Studio Beta" / "Settings" / "Hardware").mkdir(parents=True)
+
+    found = midi_script.discover_fl_hardware_dirs(parent)
+    assert len(found) == 5  # all FL Studio* dirs match
+    assert all(p.name == "Hardware" for p in found)
+
+
+def test_discover_returns_empty_when_no_fl_versions(tmp_path: Path) -> None:
+    assert midi_script.discover_fl_hardware_dirs(tmp_path / "absent") == []
+    (tmp_path / "Image-Line").mkdir()
+    assert midi_script.discover_fl_hardware_dirs(tmp_path / "Image-Line") == []
+
+
+def test_install_to_all_fl_versions(tmp_path: Path) -> None:
+    parent = tmp_path / "Image-Line"
+    for ver in ("FL Studio", "FL Studio 2024"):
+        (parent / ver / "Settings" / "Hardware").mkdir(parents=True)
+
+    results = midi_script.install_to_all_fl_versions(parent=parent)
+    assert len(results) == 2
+    for r in results:
+        assert r.action == midi_script.InstallAction.INSTALLED
+        assert r.target_path.exists()
+        assert r.target_path.parent.name == midi_script.SCRIPT_SUBDIR
+
+
+def test_install_to_all_no_fl_returns_hardware_dir_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No FL versions detected → single HARDWARE_DIR_MISSING result for default path."""
+    monkeypatch.setattr(midi_script, "DEFAULT_FL_HARDWARE_DIR", tmp_path / "absent" / "Hardware")
+    results = midi_script.install_to_all_fl_versions(parent=tmp_path / "absent")
+    assert len(results) == 1
+    assert results[0].action == midi_script.InstallAction.HARDWARE_DIR_MISSING

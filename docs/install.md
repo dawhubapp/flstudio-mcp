@@ -66,17 +66,26 @@ third.
 
 ### a. The bundled MIDI script must be in FL's Hardware dir + wired up
 
-The auto-installer (or `live_execute(kind="install_script")`) does three
-things:
+The auto-installer (or `live_execute(kind="install_script")`) does:
 
-1. Copies `device_flstudio_mcp.py` into
-   `~/Documents/Image-Line/FL Studio/Settings/Hardware/flstudio-mcp/`
-   (subfolder — FL only scans `Hardware/<subdir>/device_*.py`, never
-   `.py` files at the Hardware/ root).
-2. Pre-creates the IPC runtime dirs
+1. **Discovers every FL Studio user-data dir** matching
+   `~/Documents/Image-Line/FL Studio*/` — handles both the modern
+   shared layout (single `FL Studio/` dir for all 2024+ versions) and
+   legacy per-version layouts (`FL Studio 20/`, `FL Studio 21/`,
+   `FL Studio 2024/`, …). Installs into every one detected.
+2. Copies `device_flstudio_mcp.py` into
+   `<each>/Settings/Hardware/flstudio-mcp/` (subfolder — FL only scans
+   `Hardware/<subdir>/device_*.py`, never `.py` files at the
+   Hardware/ root).
+3. Pre-creates the IPC runtime dirs
    (`flpdiff-harness/runtime/{inbox,outbox,processed}`) — required
    because FL's sandboxed Python can't create them itself.
-3. Drops a `.version.json` sidecar so future installs are idempotent.
+4. Drops a `.version.json` sidecar so future installs are idempotent.
+
+To install into one specific version only, set
+`FLSTUDIO_MCP_HARDWARE_DIR` to that exact `Hardware/` path before
+launching the server, or pass
+`live_execute(kind="install_script", args={"hardware_dir": "/path/..."})`.
 
 **You still have to wire the script inside FL once:**
 

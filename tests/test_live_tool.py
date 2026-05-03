@@ -141,17 +141,38 @@ def test_enable_iac_kind_failure_attaches_hint(
     assert "Audio MIDI Setup" in env["result"]["hint"]
 
 
-def test_install_script_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_install_script_kind_with_explicit_hardware_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _state_dir(tmp_path, monkeypatch)
     hw = tmp_path / "Hardware"
     hw.mkdir()
-    monkeypatch.setenv("FLSTUDIO_MCP_HARDWARE_DIR", str(hw))
+    rt = FakeRuntime()
+    env = live_tool.execute("install_script", {"hardware_dir": str(hw)}, runtime=rt)
+    assert env["ok"] is True
+    installs = env["result"]["installs"]
+    assert len(installs) == 1
+    assert installs[0]["action"] == "installed"
+    assert (hw / "flstudio-mcp" / "device_flstudio_mcp.py").exists()
+    assert rt.sent == []
+
+
+def test_install_script_kind_installs_to_all_fl_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from flstudio_mcp.installer import midi_script as midi_installer
+
+    _state_dir(tmp_path, monkeypatch)
+    parent = tmp_path / "Image-Line"
+    for ver in ("FL Studio", "FL Studio 2025"):
+        (parent / ver / "Settings" / "Hardware").mkdir(parents=True)
+    monkeypatch.setattr(midi_installer, "FL_USERDATA_PARENT", parent)
+
     rt = FakeRuntime()
     env = live_tool.execute("install_script", None, runtime=rt)
     assert env["ok"] is True
-    assert env["result"]["action"] == "installed"
-    assert (hw / "flstudio-mcp" / "device_flstudio_mcp.py").exists()
-    assert rt.sent == []  # local op only
+    assert env["result"]["count"] == 2
+    assert all(r["action"] == "installed" for r in env["result"]["installs"])
 
 
 def test_unsupported_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

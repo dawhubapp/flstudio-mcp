@@ -32,38 +32,46 @@ def _default_runtime_factory() -> LiveRuntime:
     return default_runtime()
 
 
-def auto_install_midi_script() -> midi_script_installer.InstallResult | None:
-    """Run the MIDI-script installer; return result, or ``None`` if disabled.
+def auto_install_midi_script() -> list[midi_script_installer.InstallResult] | None:
+    """Run the MIDI-script installer; return list of results, or ``None`` if disabled.
 
     Disabled when ``FLSTUDIO_MCP_NO_AUTO_INSTALL`` is set (per risk R8 in
-    MCP-SPEC.md). On non-NOOP outcomes, prints a one-line stderr notice
-    so users see *what* changed without trawling the log file.
+    MCP-SPEC.md). When ``FLSTUDIO_MCP_HARDWARE_DIR`` is set, installs
+    only into that one path; otherwise installs into every detected
+    ``FL Studio*/Settings/Hardware/`` to cover side-by-side FL versions.
+
+    On non-NOOP outcomes, prints a one-line stderr notice per target
+    so users see exactly which versions were touched.
     """
     if os.environ.get(NO_AUTO_INSTALL_ENV):
         _LOG.info("MIDI script auto-install disabled by env var")
         return None
 
     try:
-        result = midi_script_installer.install_midi_script()
+        if os.environ.get("FLSTUDIO_MCP_HARDWARE_DIR"):
+            results = [midi_script_installer.install_midi_script()]
+        else:
+            results = midi_script_installer.install_to_all_fl_versions()
     except Exception as exc:
         _LOG.exception("MIDI script auto-install failed", extra={"error": type(exc).__name__})
         print(f"flstudio-mcp: MIDI script install failed: {exc}", file=sys.stderr)
         return None
 
-    if result.action != midi_script_installer.InstallAction.NOOP:
-        print(
-            f"flstudio-mcp: MIDI script {result.action.value} → {result.target_path}. "
-            "In FL Studio: Options → MIDI Settings → click 'Update MIDI scripts', "
-            "then set the IAC Driver Bus 1 input's Controller type to 'flstudio-mcp'.",
-            file=sys.stderr,
-        )
-    return result
+    for result in results:
+        if result.action != midi_script_installer.InstallAction.NOOP:
+            print(
+                f"flstudio-mcp: MIDI script {result.action.value} → {result.target_path}. "
+                "In FL Studio: Options → MIDI Settings → click 'Update MIDI scripts', "
+                "then set the IAC Driver Bus 1 input's Controller type to 'flstudio-mcp'.",
+                file=sys.stderr,
+            )
+    return results
 
 
 def build_server(
     *,
     runtime_factory: Callable[[], LiveRuntime] = _default_runtime_factory,
-    install_result: midi_script_installer.InstallResult | None = None,
+    install_result: list[midi_script_installer.InstallResult] | None = None,
 ) -> FastMCP:
     """Construct the FastMCP server with tools and resources registered."""
     server = FastMCP(
@@ -76,22 +84,26 @@ def build_server(
 
 
 def _compose_instructions(
-    install_result: midi_script_installer.InstallResult | None,
+    install_results: list[midi_script_installer.InstallResult] | None,
 ) -> str:
     base = SERVER_INSTRUCTIONS
-    if install_result is None:
+    if not install_results:
         return base
-    if install_result.action == midi_script_installer.InstallAction.NOOP:
+    actions = [r.action for r in install_results]
+    if all(a == midi_script_installer.InstallAction.NOOP for a in actions):
         return base
-    if install_result.action == midi_script_installer.InstallAction.HARDWARE_DIR_MISSING:
+    if all(a == midi_script_installer.InstallAction.HARDWARE_DIR_MISSING for a in actions):
         return (
             base + "\n\nWARNING: FL Studio's Hardware dir was not found. The MIDI "
             "script could not be installed. Verify FL Studio 25.x is "
             "installed before invoking live_execute."
         )
+    touched = [r for r in install_results if r.action != midi_script_installer.InstallAction.NOOP]
+    paths = "\n  ".join(str(r.target_path) for r in touched)
     return (
-        base + f"\n\nNOTE: the bundled MIDI script was just {install_result.action.value} "
-        f"into FL Studio. In FL: Options → MIDI Settings → click 'Update MIDI scripts', "
+        base + f"\n\nNOTE: the bundled MIDI script was {touched[0].action.value} into "
+        f"{len(touched)} FL Studio install(s):\n  {paths}\n"
+        "In FL: Options → MIDI Settings → click 'Update MIDI scripts', "
         "then set the IAC Driver Bus 1 input's Controller type to 'flstudio-mcp' "
         "before calling live_execute."
     )
