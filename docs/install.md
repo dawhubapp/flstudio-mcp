@@ -58,7 +58,24 @@ command = "uvx"
 args = ["--from", "git+https://github.com/<org>/flstudio-mcp", "flstudio-mcp"]
 ```
 
-## 3. Required macOS state
+## 3. Optional: offline-mode prerequisites
+
+`live_execute` runs **without anything else** (FL Studio + IAC + the
+bundled MIDI script — see Section 4). `offline_execute` reads and
+mutates `.flp` files **without launching FL** by spawning a subprocess
+on the canonical TS parser/serializer. That subprocess needs one of:
+
+| Option | Install | Notes |
+|--------|---------|-------|
+| **A. `bun` + sibling `flpdiff/` checkout** | `brew install oven-sh/bun/bun` then have `flpdiff/` checked out alongside `mcp/` | Default for development. ~25 ms cold per call. |
+| **B. `flpdiff` on PATH** | `npm i -g flpdiff` | For users who don't want bun. Works the same. |
+| **C. Custom override** | `export FLSTUDIO_MCP_BRIDGE_CMD="node /path/to/bridge.mjs"` | Vendoring a compiled bundle, etc. |
+
+If none are present, `offline_execute` returns `UNKNOWN` envelopes with
+an actionable hint pointing at `FLSTUDIO_MCP_BRIDGE_CMD`. `live_execute`
+keeps working regardless.
+
+## 4. Required macOS state
 
 flstudio-mcp depends on three pieces of host state. The server checks the
 first two on boot and surfaces clear errors via `live_execute` for the
@@ -166,7 +183,7 @@ needs to be launched and have the device enabled at least once via
 
 If FL is closed, calls return `FL_NOT_RUNNING` (Phase 2.4).
 
-## 4. Verification
+## 5. Verification
 
 ```
 live_execute(kind="list_apis")
@@ -178,7 +195,7 @@ Should return the supported `kind` enum. With FL open on a project,
 Logs go to `~/Library/Logs/flstudio-mcp/server.log` (rotating JSON).
 The `logs://recent` MCP resource returns the last 50 entries.
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
@@ -188,3 +205,5 @@ The `logs://recent` MCP resource returns the last 50 entries.
 | FL Script output doesn't show `[flstudio-mcp] started ...` | Controller type not set to `flstudio-mcp`, or IAC input not enabled | Re-do Section 3.a steps 3–5 |
 | `flstudio-mcp` missing from Controller type dropdown | FL hasn't rescanned Hardware/ since install | Click **Update MIDI scripts** in MIDI Settings |
 | Auto-enable IAC silently no-ops | Accessibility permission missing | System Settings → Privacy & Security → Accessibility → enable for terminal/IDE |
+| `offline_execute` returns `UNKNOWN` with `FLSTUDIO_MCP_BRIDGE_CMD` hint | bun + flpdiff sibling NOT present and `flpdiff` not on PATH | Section 3 — install bun OR `npm i -g flpdiff` |
+| `offline_execute` truncates `describe` output mid-JSON | bun stdout flush race (fixed in flpdiff@a9d5388+) | Update flpdiff to a recent commit |

@@ -1,0 +1,304 @@
+# flstudio-mcp — tools reference
+
+Every tool flstudio-mcp exposes, every `kind` it dispatches, every arg
+shape, with example envelopes. Auto-generated from the Pydantic schemas
+in `src/flstudio_mcp/tools/_mutations.py` and the dispatcher tables in
+`tools/live.py` + `tools/offline.py`.
+
+## Tool surface
+
+| MCP tool | Purpose | Requires FL running |
+|----------|---------|---------------------|
+| `live_execute` | Talk to a running FL Studio instance over IAC + the bundled MIDI script. Read + mutate + setup. | yes (except setup kinds) |
+| `offline_execute` | Read + mutate `.flp` files on disk, no FL needed. Subprocess on the canonical TS parser/serializer. | no |
+
+`live_execute` and `offline_execute` are deliberately namespaced apart
+so the LLM can pick the right path. Read kinds with the same name
+(`describe`, `list_channels`, …) return the same shape on both sides
+so prompts can fall back transparently.
+
+## Envelope shape
+
+Every call returns:
+
+```json
+{
+  "ok":         true | false,
+  "kind":       "<echoed-kind>",
+  "result":     <kind-specific> | { "error": "<CODE>", "message": "...", "hint": "...", "extra": {...} },
+  "duration_ms": <number>,
+  "log_id":     "<12-hex>"
+}
+```
+
+`ok=false` always shapes `result` as an error object.
+
+## Error taxonomy
+
+| Code | Meaning | Typical fix |
+|------|---------|-------------|
+| `INVALID_ARGS` | Args failed Pydantic validation OR bridge rejected them | Fix args per the schema below |
+| `UNSUPPORTED_KIND` | `kind` not in this tool's dispatcher | Use `list_apis` to enumerate |
+| `FL_NOT_RUNNING` | Live call requires FL but no IPC handshake | Launch FL, open a project |
+| `FL_DIALOG_BLOCKING` | Offline write attempted on a file FL has open | Close project in FL, retry |
+| `IAC_DRIVER_OFFLINE` | macOS IAC bus disabled | Run `enable_iac` or use Audio MIDI Setup |
+| `SCRIPT_NOT_INSTALLED` | MIDI script missing from FL Hardware/ | Run `install_script` |
+| `HARDWARE_DIR_MISSING` | FL Studio 25 not installed | Install FL |
+| `SNAPSHOT_FAILED` | Pre-write snapshot couldn't be taken | Check disk space, source file existence |
+| `LEGACY_TEMPO_FORMAT` | Pre-FL-3.4.0 file uses 0x42/0x5D coarse+fine tempo | File too old for `set_tempo` writes |
+| `EVENT_NOT_FOUND` | Mutation target doesn't exist (channel iid, pattern iid, track index, …) | Verify with a `list_*` read first |
+| `UNKNOWN` | Catch-all (bridge subprocess crash, missing flpdiff, …) | See `result.message` + `result.hint` |
+
+---
+
+# `live_execute` reference
+
+Call shape:
+
+```python
+live_execute(kind="<kind>", args={...})
+```
+
+## Read kinds
+
+### `describe`
+**Args:** none.
+**Returns:** full FL project JSON — same shape as the offline `describe`.
+Includes `metadata`, `channels[]`, `inserts[]`, `patterns[]`,
+`arrangements[]`, plus FL-runtime fields (`current_filename`).
+
+### `get_tempo`
+**Args:** none. **Returns:** `{tempo_bpm: float}`.
+
+### `list_channels`, `list_mixer`, `list_patterns`, `list_plugins`
+**Args:** none. Same shape as the offline equivalents (see below).
+
+### `get_pattern_steps`
+**Args:** `{channel: int (≥0), count: int (1..256, default 16)}`.
+**Returns:** `{channel, steps: bool[]}` — current pattern's step grid
+for the named channel (only meaningful for step-sequencer mode channels).
+
+### `get_plugin_info`
+**Args:** `{index: int (≥0), scope: "channel" | "mixer" (default channel), slot: int (default -1)}`.
+**Returns:** plugin metadata + parameter list for the named plugin.
+
+### `list_apis`
+**Args:** none. **Returns:** `{tool, kinds: string[], note}`.
+
+## Write kinds (auto-snapshot before mutation)
+
+### `set_tempo` — `{bpm: float (0 < bpm < 10000)}`
+### `set_time_signature` — `{num: int (1..64), beat: int (1..64)}`
+### `set_channel_volume` — `{iid: int (≥0), value: float (0..1)}`
+### `set_channel_name` — `{iid: int (≥0), name: str (1..256)}`
+### `set_insert_volume` — `{idx: int (≥0, 0=Master), value: float (0..1)}`
+### `set_insert_name` — `{idx: int (≥0), name: str (1..256)}`
+### `set_pattern_name` — `{iid: int (≥1, 1-based!), name: str (1..256)}`
+> Pattern numbering is 1-based in both FL UI and API. `iid=0` silently
+> no-ops at the script level — schema rejects it up front.
+### `set_plugin_param` — `{index: int (≥0), param: int (≥0), value: float (0..1), scope: "channel"|"mixer", slot: int (-1 default; required ≥0 when scope="mixer")}`
+### `set_mixer_eq` — `{idx: int (≥0), band: int (0=low,1=mid,2=high), frequency?: float, gain?: float, bandwidth?: float}`
+### `save` — no args. Writes the project to disk via FL.
+### `set_step` — `{channel: int (≥0), step: int (0..255), on: bool}` — toggle a step in the active pattern's step grid.
+### `clear_pattern_steps` — `{channel: int (≥0), count: int (1..256, default 16)}` — clear N steps on a channel.
+
+## Recovery
+
+### `restore_snapshot` — `{snapshot_id: str}`
+Roll back to a snapshot recorded by any prior write call. The
+`snapshot_id` is in every successful write envelope's
+`result.snapshot_id`.
+
+## Setup kinds (don't require FL running)
+
+### `install_script` — `{force: bool (default false)}`
+Drop the bundled MIDI script into FL's Hardware directory. Idempotent
+(sha256 sidecar check). `force=true` re-copies even if already present.
+
+### `check_iac`
+**Returns:** `{state: "online"|"offline"|"missing", devices: [...], detail: "..."}`.
+
+### `enable_iac`
+Drive Audio MIDI Setup via UI scripting to enable the IAC Driver.
+Requires Accessibility permission for the calling process.
+
+### `verify_setup`
+Whole-chain check: IAC online + script installed + FL running + IPC
+handshake. **Returns** per-check `{ok, detail}` map. Use this as the
+first call in any new session.
+
+### `reload_script`
+Best-effort reload of the FL MIDI script via Settings → Update MIDI
+scripts (pyautogui-driven). **Note:** confirmed in decision #32 that FL
+2025 does not actually reload running scripts — only restart-FL works.
+Kept for documentation purposes.
+
+### `wire_input` (experimental)
+pyautogui automation of the FL Settings → MIDI input → Enable toggle.
+Coordinates work; FL UI semantics fragile. Manual is easier.
+
+---
+
+# `offline_execute` reference
+
+Call shape:
+
+```python
+offline_execute(kind="<kind>", args={"path": "/abs/path.flp", ...})
+```
+
+`path` is required for every kind except `list_apis`. Subprocess to the
+canonical TS parser/serializer (~25 ms cold per call). FL doesn't need
+to be running, but **writes refuse with `FL_DIALOG_BLOCKING` if FL has
+the file open** — its in-memory state would silently overwrite the edit.
+
+## Read kinds
+
+### `describe(path)`
+Full FLP project JSON. `metadata` (title, artists, version, tempo,
+time_signature, ppq, …), `channels[]`, `inserts[]`, `patterns[]`,
+`arrangements[]`. Mirrors Python `flp-info --format json`.
+
+### `get_tempo(path)` → `{tempo_bpm: float}`
+
+### `list_channels(path)`
+Per-channel summary: `iid`, `kind` (sampler/instrument/automation/...),
+`name?`, `color?`, `levels` (pan, volume, pitch, filter), `enabled`,
+`pingPongLoop`, `locked`, `plugin?` (name + vendor for VST-wrapped).
+
+### `list_mixer(path)`
+Per-insert summary: `index` (0=master), `name?`, `color?`, `flags`,
+`slots[]` with per-slot plugin info, `volume?`, `pan?`, `stereoSeparation?`.
+
+### `list_patterns(path)`
+Per-pattern: `id`, `name?`, `notes[]` (24-byte note records:
+position, length, key, channel_iid, velocity, mod_x, mod_y, …),
+`controllers[]`, `color?`, `length?`, `looped?`.
+
+### `list_plugins(path)`
+Flat array of every plugin in the project, each tagged with `scope`
+("channel" or "mixer"), `channel_index` or `(insert_index, slot_index)`,
+`name`, `vendor`.
+
+### `list_arrangements(path)`
+**Returns:** `[{id, name, track_count, clip_count, timemarker_count}]`.
+
+### `list_tracks(path, arrangement: int (default 0))`
+**Returns:** `{arrangement, total_tracks, tracks: [...]}`. Tracks are
+filtered to user-customised only (named OR locked OR disabled) — FL
+emits 500 default tracks per arrangement, surfacing all of them
+flooding LLM context.
+
+Per-track shape: `{index, iid, name|null, color|null, enabled|null,
+locked|null, height|null}`.
+
+### `list_clips(path, arrangement: int (default 0))`
+**Returns:** array of `{position_ticks, length_ticks, track_index
+(un-reversed; 0=top), kind: "pattern"|"channel", ref_id, group, flags}`.
+`ref_id` resolves to pattern.id or channel.iid based on
+`pattern_base = 20480` discriminator.
+
+### `list_apis()`
+Enumerate all kinds. **Args:** `path` not required.
+
+## Write kinds (auto-snapshot before mutation, FL-open lock-checked)
+
+Each write envelope embeds `snapshot_id` in `result` for
+`live_execute(kind="restore_snapshot", args={snapshot_id})` rollback.
+
+### Project-level
+- **`set_tempo(path, bpm: number)`** — replaces the modern `0x9C` u32
+  milli-BPM event. Throws `LEGACY_TEMPO_FORMAT` on pre-FL-3.4.0 files
+  (`0x42` u16 coarse + optional `0x5D` u16 fine).
+- **`set_time_signature(path, numerator: int (1..255), denominator: int)`** —
+  denominator must be a power of 2 in `[1, 64]` (1, 2, 4, 8, 16, 32, 64)
+  matching FL UI options. Replaces top-level `0x11` + `0x12` u8 events.
+
+### Channels (iid 0-based, sparse — FL preserves iids when middle channels deleted)
+- **`set_channel_name(path, iid, name)`** — replaces `0xCB` in channel
+  scope (block-walker bounded by next `0x40` / mixer-section markers).
+- **`set_channel_color(path, iid, color: {r, g, b, a?})`** — RGBA
+  components in `[0, 255]`. Replaces `0x80` u32 RGBA-packed event.
+- **`set_channel_routing(path, iid, target_insert: int (-1..127))`** —
+  routes channel to mixer insert; `-1` = unrouted (default to master).
+  Replaces `0x16` u8 (signed int8) event.
+
+### Mixer inserts (index 0-based, 0=Master)
+- **`set_insert_name(path, index, name)`** — replaces `0xCC` blob.
+- **`set_insert_color(path, index, color)`** — replaces `0x95` u32.
+
+### Patterns (iid 1-based!)
+- **`set_pattern_name(path, iid, name)`** — replaces `0xC1` blob.
+- **`set_pattern_color(path, iid, color)`** — replaces `0x96` u32.
+- **`clone_pattern(path, source_iid, name?)`** — duplicates pattern's
+  full event subtree (notes, controllers, color, length, looped, name).
+  New id = `max(existing) + 1`. Default name `"Pattern N copy"`.
+
+### Arrangements + tracks
+- **`set_arrangement_name(path, id: int (default 0), name)`** — replaces `0xF1` blob.
+- **`set_track_name(path, arrangement: int (default 0), track: int, name)`** —
+  replaces `0xEF` after the Nth `0xEE` track-data blob.
+- **`set_track_color(path, arrangement, track, color)`** — patches
+  bytes 4-7 of the 70-byte `0xEE` track-data blob in place; preserves
+  all other track-data bytes (iid, icon, enabled, height, locked, +
+  trailing motion/press/etc).
+
+### Playlist clips
+- **`add_clip(path, arrangement, kind: "pattern"|"channel", ref_id, track_index, position_ticks, length_ticks)`** —
+  appends a 60-byte FL 21+ clip record to the LAST `0xE9` blob in the
+  arrangement (preserves all existing record bytes verbatim).
+  Reserved bytes in the new record zero (FL tolerates).
+- **`remove_clip(path, arrangement, track_index, position_ticks?, ref_id?, kind?)`** —
+  drop all matching clips. `track_index` required; optional fields
+  narrow the match. Throws `EVENT_NOT_FOUND` if no match.
+- **`move_clip(path, arrangement, track_index, position_ticks?, ref_id?, kind?, to_track_index?, to_position_ticks?)`** —
+  patches matching records' position and/or track in place. At least
+  one of `to_track_index` / `to_position_ticks` required.
+
+---
+
+# Examples
+
+## Read-only introspection
+
+```python
+live_execute(kind="describe")
+# → {ok: true, kind: "describe", result: {metadata: {...}, channels: [...], ...}}
+
+offline_execute(kind="list_clips", args={"path": "/Users/me/proj.flp", "arrangement": 0})
+# → {ok: true, kind: "list_clips", result: [
+#     {position_ticks: 0, length_ticks: 384, track_index: 0, kind: "pattern", ref_id: 1, group: 0, flags: 64},
+#     ...
+#   ]}
+```
+
+## Mutation with snapshot
+
+```python
+r = offline_execute(kind="set_channel_color",
+                    args={"path": "/p.flp", "iid": 0, "color": {"r": 255, "g": 100, "b": 50}})
+# → {ok: true, kind: "set_channel_color", result: {path: "/p.flp", bytes_written: 47602,
+#                                                   snapshot_id: "p/20260503T180438-f8ed8e"}}
+
+# Later, roll it back:
+live_execute(kind="restore_snapshot", args={"snapshot_id": "p/20260503T180438-f8ed8e"})
+```
+
+## Reorganize-project (Ableton-style, fully offline)
+
+```python
+PATH = "/Users/me/messy_project.flp"
+
+offline_execute(kind="set_arrangement_name", args={"path": PATH, "id": 0, "name": "Verse-A"})
+
+for track, name, color in [
+    (0, "DRUMS", {"r": 220, "g": 50,  "b": 47}),
+    (1, "BASS",  {"r": 181, "g": 137, "b": 0}),
+    (2, "KEYS",  {"r": 38,  "g": 139, "b": 210}),
+    (3, "LEAD",  {"r": 211, "g": 54,  "b": 130}),
+]:
+    offline_execute(kind="set_track_name",  args={"path": PATH, "arrangement": 0, "track": track, "name": name})
+    offline_execute(kind="set_track_color", args={"path": PATH, "arrangement": 0, "track": track, "color": color})
+```
+
+See `docs/examples/03-reorganize-project.md` for the full demo prompt.
