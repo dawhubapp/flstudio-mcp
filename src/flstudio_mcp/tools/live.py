@@ -29,7 +29,10 @@ from ..installer import wire_fl as wire_fl_installer
 from ..logging_setup import get_logger
 from ..preflight import Preflight
 from ..runtime.live import LiveRuntime
+from ..snapshots import SnapshotStore
+from ..snapshots import default_store as default_snapshot_store
 from ..telemetry import record_event
+from . import _mutations
 
 # Kinds that DON'T need FL running — they're local install / detection
 # operations. Skip pre-flight for these so users can run them BEFORE
@@ -54,6 +57,19 @@ LiveKind = Literal[
     "enable_iac",
     "verify_setup",
     "wire_input",
+    # Phase 2.2 mutations
+    "set_tempo",
+    "set_time_signature",
+    "set_channel_volume",
+    "set_channel_name",
+    "set_insert_volume",
+    "set_insert_name",
+    "set_pattern_name",
+    "set_plugin_param",
+    "set_mixer_eq",
+    "save",
+    "get_plugin_info",
+    "restore_snapshot",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -64,10 +80,26 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "enable_iac",
     "verify_setup",
     "wire_input",
+    *_mutations.kinds_in_scope(),
 )
 TOOL_NAME = "live_execute"
 
 _LOG = get_logger("tools.live")
+
+
+_SNAPSHOT_STORE_OVERRIDE: SnapshotStore | None = None
+
+
+def set_snapshot_store(store: SnapshotStore | None) -> None:
+    """Override the snapshot store used by ``execute()``. Pass None to reset."""
+    global _SNAPSHOT_STORE_OVERRIDE
+    _SNAPSHOT_STORE_OVERRIDE = store
+
+
+def _resolve_snapshot_store() -> SnapshotStore:
+    if _SNAPSHOT_STORE_OVERRIDE is not None:
+        return _SNAPSHOT_STORE_OVERRIDE
+    return default_snapshot_store()
 
 
 def _make_log_id() -> str:
@@ -286,6 +318,8 @@ def execute(
                 level="warning",
             )
 
+    snapshot_store = _resolve_snapshot_store()
+
     try:
         if kind == "describe":
             result = _do_describe(runtime)
@@ -303,6 +337,15 @@ def execute(
             result = _do_verify_setup(args, runtime)
         elif kind == "wire_input":
             result = _do_wire_input(args)
+        elif kind == "restore_snapshot":
+            result = _mutations.execute_restore_snapshot(args, snapshot_store=snapshot_store)
+        elif kind in _mutations.MUTATIONS or kind in _mutations.READ_KINDS:
+            result = _mutations.execute_mutation(
+                kind,
+                args,
+                runtime=runtime,
+                snapshot_store=snapshot_store,
+            )
         else:  # unreachable — guarded above
             raise ToolError(ErrorCode.UNSUPPORTED_KIND, f"unknown kind {kind!r}")
     except ToolError as err:
@@ -369,8 +412,12 @@ def register(
             "Args: {dry_run?: bool, coords?: {update_scripts_btn:[x,y], "
             "iac_input_row:[x,y], enable_radio:[x,y], controller_dropdown:[x,y]}}.\n"
             "\n"
+            f"{_mutations.tool_description_fragment()}\n"
+            "\n"
             "Returns: {ok, kind, result, duration_ms, log_id}. Use the "
-            "logs://recent resource (filter by log_id) for full call detail."
+            "logs://recent resource (filter by log_id) for full call detail. "
+            "Mutation results include `snapshot_id`; pass it to "
+            "`restore_snapshot` to roll back."
         ),
     )
     def live_execute(kind: LiveKind, args: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -244,6 +244,50 @@ def test_preflight_disabled_when_none(tmp_path: Path, monkeypatch: pytest.Monkey
     assert env["result"] == {"tempo_bpm": 120.0}
 
 
+def test_mutation_kind_set_tempo_via_execute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from flstudio_mcp import snapshots
+    from flstudio_mcp.tools import live as live_tool
+
+    _state_dir(tmp_path, monkeypatch)
+    flp = tmp_path / "demo.flp"
+    flp.write_bytes(b"FLhd")
+    payload = json.dumps(
+        {
+            "tempo": 130000.0,
+            "project_title": "demo",
+            "flp_path": str(flp),
+            "channel_count": 8,
+            "pattern_count": 1,
+            "insert_count": 105,
+            "api_version": "FL Studio 2025",
+        }
+    )
+    rt = FakeRuntime(responses={"describe": _FakeResult(detail=payload)})
+
+    store = snapshots.SnapshotStore(root=tmp_path / "snaps", file_open_check=False)
+    live_tool.set_snapshot_store(store)
+    try:
+        env = live_tool.execute("set_tempo", {"bpm": 145.0}, runtime=rt)
+    finally:
+        live_tool.set_snapshot_store(None)
+
+    assert env["ok"] is True
+    assert env["result"]["snapshot_id"].startswith("demo/")
+    assert ("set_tempo", {"bpm": 145.0}) in rt.sent
+
+
+def test_mutation_invalid_args_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _state_dir(tmp_path, monkeypatch)
+    rt = FakeRuntime()
+    env = live_tool.execute("set_tempo", {"bpm": -5}, runtime=rt)
+    assert env["ok"] is False
+    assert env["result"]["error"] == "INVALID_ARGS"
+    assert "bpm" in env["result"]["message"]
+    assert rt.sent == []
+
+
 def test_unsupported_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _state_dir(tmp_path, monkeypatch)
     rt = FakeRuntime()
