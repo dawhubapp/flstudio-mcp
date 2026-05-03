@@ -15,6 +15,7 @@ from .resources import logs as logs_resource
 from .resources import snapshots as snapshots_resource
 from .runtime.live import LiveRuntime, default_runtime
 from .tools import live as live_tool
+from .tools import offline as offline_tool
 
 NO_AUTO_INSTALL_ENV = "FLSTUDIO_MCP_NO_AUTO_INSTALL"
 RE_HARNESS_INBOX_ENV = "FLPDIFF_HARNESS_INBOX"
@@ -100,6 +101,7 @@ def build_server(
     logs_resource.register(server)
     snapshots_resource.register(server)
     live_tool.register(server, runtime_factory)
+    offline_tool.register(server)
     return server
 
 
