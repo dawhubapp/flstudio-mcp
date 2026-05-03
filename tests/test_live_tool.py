@@ -141,6 +141,29 @@ def test_enable_iac_kind_failure_attaches_hint(
     assert "Audio MIDI Setup" in env["result"]["hint"]
 
 
+def test_verify_setup_kind_returns_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from flstudio_mcp.installer import verify as verify_installer
+
+    _state_dir(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        verify_installer,
+        "verify_setup",
+        lambda runtime, *, skip_ui=False: verify_installer.VerifyResult(
+            ok=True,
+            steps=[verify_installer.VerifyStep("stub", True, "fake")],
+            summary="ok",
+        ),
+    )
+    rt = FakeRuntime()
+    env = live_tool.execute("verify_setup", {"skip_ui": True}, runtime=rt)
+    assert env["ok"] is True
+    assert env["result"]["ok"] is True
+    assert env["result"]["summary"] == "ok"
+    assert env["result"]["steps"][0]["name"] == "stub"
+
+
 def test_install_script_kind_with_explicit_hardware_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

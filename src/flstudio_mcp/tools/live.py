@@ -23,6 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from .. import state as state_mod
 from ..installer import iac as iac_installer
 from ..installer import midi_script as midi_installer
+from ..installer import verify as verify_installer
 from ..logging_setup import get_logger
 from ..runtime.live import LiveRuntime
 from ..telemetry import record_event
@@ -34,6 +35,7 @@ LiveKind = Literal[
     "install_script",
     "check_iac",
     "enable_iac",
+    "verify_setup",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -42,6 +44,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "install_script",
     "check_iac",
     "enable_iac",
+    "verify_setup",
 )
 TOOL_NAME = "live_execute"
 
@@ -130,6 +133,12 @@ def _do_install_script(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _do_verify_setup(args: dict[str, Any], runtime: LiveRuntime) -> dict[str, Any]:
+    skip_ui = bool(args.get("skip_ui", False))
+    result = verify_installer.verify_setup(runtime, skip_ui=skip_ui)
+    return result.to_dict()
+
+
 def _do_check_iac() -> dict[str, Any]:
     return iac_installer.check_iac_status().to_dict()
 
@@ -175,6 +184,8 @@ def execute(
             result = _do_check_iac()
         elif kind == "enable_iac":
             result = _do_enable_iac()
+        elif kind == "verify_setup":
+            result = _do_verify_setup(args, runtime)
         else:
             envelope = _envelope(
                 ok=False,
@@ -257,6 +268,9 @@ def register(server: FastMCP, runtime_factory: Callable[[], LiveRuntime]) -> Non
             "  - check_iac: report macOS IAC Driver state (online/offline/"
             "not_installed/unknown).\n"
             "  - enable_iac: best-effort UI-scripting attempt to flip IAC online.\n"
+            "  - verify_setup: end-to-end check (IAC + script installed + FL "
+            "running + Script output marker + IPC handshake). Args: "
+            "{skip_ui?: bool} to skip the AppleScript-driven UI checks.\n"
             "\n"
             "Returns: {ok, kind, result, duration_ms, log_id}. Use the "
             "logs://recent resource (filter by log_id) for full call detail."
