@@ -49,6 +49,9 @@ OfflineKind = Literal[
     # Phase 3.2 write kinds
     "set_tempo",
     "set_pattern_name",
+    "set_channel_name",
+    "set_insert_name",
+    "set_time_signature",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -60,8 +63,19 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "list_apis",
     "set_tempo",
     "set_pattern_name",
+    "set_channel_name",
+    "set_insert_name",
+    "set_time_signature",
 )
-WRITE_KINDS: frozenset[str] = frozenset({"set_tempo", "set_pattern_name"})
+WRITE_KINDS: frozenset[str] = frozenset(
+    {
+        "set_tempo",
+        "set_pattern_name",
+        "set_channel_name",
+        "set_insert_name",
+        "set_time_signature",
+    }
+)
 TOOL_NAME = "offline_execute"
 
 _LOG = get_logger("tools.offline")
@@ -309,9 +323,11 @@ def register(
             "Mutation kinds (auto-snapshot before write; result includes snapshot_id):\n"
             "  - set_tempo(path, bpm): replace the modern 0x9C tempo event.\n"
             "  - set_pattern_name(path, iid, name): rename pattern at 1-based iid.\n"
+            "  - set_channel_name(path, iid, name): rename channel by 0-based iid.\n"
+            "  - set_insert_name(path, index, name): rename mixer insert (0=master).\n"
+            "  - set_time_signature(path, numerator, denominator): set project time sig.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"
-            "Channel/insert/timesig writes land in v0.1.x.\n"
             "\n"
             "Returns the same envelope shape as live_execute: "
             "{ok, kind, result, duration_ms, log_id}."
