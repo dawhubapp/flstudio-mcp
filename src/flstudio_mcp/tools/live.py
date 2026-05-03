@@ -21,13 +21,29 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 
 from .. import state as state_mod
+from ..errors import ErrorCode, ToolError, hint_for
 from ..installer import iac as iac_installer
 from ..installer import midi_script as midi_installer
 from ..installer import verify as verify_installer
 from ..installer import wire_fl as wire_fl_installer
 from ..logging_setup import get_logger
+from ..preflight import Preflight
 from ..runtime.live import LiveRuntime
 from ..telemetry import record_event
+
+# Kinds that DON'T need FL running — they're local install / detection
+# operations. Skip pre-flight for these so users can run them BEFORE
+# FL exists or before the script is wired.
+KINDS_SKIPPING_PREFLIGHT: frozenset[str] = frozenset(
+    {
+        "list_apis",
+        "install_script",
+        "check_iac",
+        "enable_iac",
+        "verify_setup",  # has its own internal chain
+        "wire_input",
+    }
+)
 
 LiveKind = Literal[
     "describe",
@@ -76,25 +92,76 @@ def _envelope(
     }
 
 
+def _emit_error(
+    *,
+    kind: str,
+    log_id: str,
+    started: float,
+    err: ToolError,
+    level: str = "error",
+    log_traceback: bool = False,
+) -> dict[str, Any]:
+    """Build the ok=false envelope, log it, record telemetry."""
+    envelope = _envelope(
+        ok=False,
+        kind=kind,
+        result=err.to_result(),
+        started_at=started,
+        log_id=log_id,
+    )
+    log_extra = {
+        "kind": kind,
+        "log_id": log_id,
+        "duration_ms": envelope["duration_ms"],
+        "error_code": err.code.value,
+    }
+    if log_traceback:
+        _LOG.exception("live_execute error", extra=log_extra)
+    elif level == "warning":
+        _LOG.warning("live_execute %s", err.code.value, extra=log_extra)
+    else:
+        _LOG.error("live_execute %s", err.code.value, extra=log_extra)
+    record_event(
+        f"{TOOL_NAME}.{kind}",
+        False,
+        envelope["duration_ms"],
+        log_id=log_id,
+        error=err.code.value,
+    )
+    return envelope
+
+
 def _do_describe(runtime: LiveRuntime) -> dict[str, Any]:
-    project = state_mod.describe_active_project(runtime)
+    try:
+        project = state_mod.describe_active_project(runtime)
+    except TimeoutError as exc:
+        raise ToolError(ErrorCode.IPC_TIMEOUT, str(exc)) from exc
+    except RuntimeError as exc:
+        raise ToolError(ErrorCode.MIDI_SCRIPT_NOT_LOADED, str(exc)) from exc
     payload = project.to_dict()
     payload.pop("raw", None)
     return payload
 
 
 def _do_get_tempo(runtime: LiveRuntime) -> dict[str, Any]:
-    result = runtime.send("get_tempo")
+    try:
+        result = runtime.send("get_tempo")
+    except TimeoutError as exc:
+        raise ToolError(ErrorCode.IPC_TIMEOUT, str(exc)) from exc
     if getattr(result, "status", None) != "ok":
-        raise RuntimeError(
+        raise ToolError(
+            ErrorCode.MIDI_SCRIPT_NOT_LOADED,
             f"get_tempo failed: status={getattr(result, 'status', '?')!r} "
-            f"detail={getattr(result, 'detail', '')[:200]!r}"
+            f"detail={getattr(result, 'detail', '')[:200]!r}",
         )
     detail = getattr(result, "detail", "") or ""
     try:
         bpm = float(detail.strip())
     except ValueError as exc:
-        raise RuntimeError(f"get_tempo returned non-numeric detail: {detail!r}") from exc
+        raise ToolError(
+            ErrorCode.UNKNOWN,
+            f"get_tempo returned non-numeric detail: {detail!r}",
+        ) from exc
     return {"tempo_bpm": bpm}
 
 
@@ -172,8 +239,15 @@ def execute(
     args: dict[str, Any] | None,
     *,
     runtime: LiveRuntime,
+    preflight: Preflight | None = None,
 ) -> dict[str, Any]:
-    """Run one ``live_execute`` call. Returns the standard envelope."""
+    """Run one ``live_execute`` call. Returns the standard envelope.
+
+    Pre-flight (Phase 2.4): for kinds that talk to FL, run a cached
+    1-second noop ping before dispatching the real handler. Skips the
+    check for purely-local kinds (``list_apis``, ``install_script``,
+    ``check_iac``, ``enable_iac``, ``verify_setup``, ``wire_input``).
+    """
     args = args or {}
     log_id = _make_log_id()
     started = time.time()
@@ -182,6 +256,35 @@ def execute(
         "live_execute begin",
         extra={"kind": kind, "log_id": log_id, "args_keys": sorted(args.keys())},
     )
+
+    if kind not in SUPPORTED_KINDS:
+        return _emit_error(
+            kind=kind,
+            log_id=log_id,
+            started=started,
+            err=ToolError(
+                ErrorCode.UNSUPPORTED_KIND,
+                f"unknown kind {kind!r}",
+                hint=hint_for(ErrorCode.UNSUPPORTED_KIND),
+                extra={"supported": list(SUPPORTED_KINDS)},
+            ),
+            level="warning",
+        )
+
+    if preflight is not None and kind not in KINDS_SKIPPING_PREFLIGHT:
+        pf = preflight.check()
+        if not pf.ok:
+            return _emit_error(
+                kind=kind,
+                log_id=log_id,
+                started=started,
+                err=ToolError(
+                    pf.code or ErrorCode.PREFLIGHT_FAILED,
+                    pf.detail,
+                    extra={"cached": pf.cached},
+                ),
+                level="warning",
+            )
 
     try:
         if kind == "describe":
@@ -200,50 +303,18 @@ def execute(
             result = _do_verify_setup(args, runtime)
         elif kind == "wire_input":
             result = _do_wire_input(args)
-        else:
-            envelope = _envelope(
-                ok=False,
-                kind=kind,
-                result={
-                    "error": "UNSUPPORTED_KIND",
-                    "message": f"unknown kind {kind!r}",
-                    "supported": list(SUPPORTED_KINDS),
-                },
-                started_at=started,
-                log_id=log_id,
-            )
-            _LOG.warning(
-                "live_execute unsupported_kind",
-                extra={"kind": kind, "log_id": log_id, "duration_ms": envelope["duration_ms"]},
-            )
-            record_event(
-                f"{TOOL_NAME}.{kind}",
-                False,
-                envelope["duration_ms"],
-                log_id=log_id,
-                error="UNSUPPORTED_KIND",
-            )
-            return envelope
+        else:  # unreachable — guarded above
+            raise ToolError(ErrorCode.UNSUPPORTED_KIND, f"unknown kind {kind!r}")
+    except ToolError as err:
+        return _emit_error(kind=kind, log_id=log_id, started=started, err=err)
     except Exception as exc:
-        envelope = _envelope(
-            ok=False,
+        return _emit_error(
             kind=kind,
-            result={"error": type(exc).__name__, "message": str(exc)},
-            started_at=started,
             log_id=log_id,
+            started=started,
+            err=ToolError(ErrorCode.UNKNOWN, f"{type(exc).__name__}: {exc}"),
+            log_traceback=True,
         )
-        _LOG.exception(
-            "live_execute error",
-            extra={"kind": kind, "log_id": log_id, "duration_ms": envelope["duration_ms"]},
-        )
-        record_event(
-            f"{TOOL_NAME}.{kind}",
-            False,
-            envelope["duration_ms"],
-            log_id=log_id,
-            error=type(exc).__name__,
-        )
-        return envelope
 
     envelope = _envelope(
         ok=True,
@@ -260,12 +331,20 @@ def execute(
     return envelope
 
 
-def register(server: FastMCP, runtime_factory: Callable[[], LiveRuntime]) -> None:
+def register(
+    server: FastMCP,
+    runtime_factory: Callable[[], LiveRuntime],
+    *,
+    preflight: Preflight | None = None,
+) -> None:
     """Register ``live_execute`` on the given server.
 
     ``runtime_factory`` is called per invocation so the runtime can be
-    rebuilt cheaply if FL is restarted between calls.
+    rebuilt cheaply if FL is restarted between calls. ``preflight`` is
+    a 5-second cached noop ping that runs before each FL-bound kind;
+    pass ``None`` to disable (tests).
     """
+    pf = preflight if preflight is not None else Preflight(runtime_factory=runtime_factory)
 
     @server.tool(
         name=TOOL_NAME,
@@ -295,4 +374,4 @@ def register(server: FastMCP, runtime_factory: Callable[[], LiveRuntime]) -> Non
         ),
     )
     def live_execute(kind: LiveKind, args: dict[str, Any] | None = None) -> dict[str, Any]:
-        return execute(kind, args, runtime=runtime_factory())
+        return execute(kind, args, runtime=runtime_factory(), preflight=pf)

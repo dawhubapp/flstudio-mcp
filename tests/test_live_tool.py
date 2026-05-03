@@ -33,6 +33,9 @@ class FakeRuntime:
             return self.responses[kind]
         return _FakeResult()
 
+    def noop(self, *, timeout_s: float = 1.0) -> _FakeResult:
+        return self.send("noop")
+
 
 @pytest.fixture(autouse=True)
 def _logs(tmp_path: Path) -> Path:
@@ -87,7 +90,7 @@ def test_get_tempo_error_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     rt = FakeRuntime(responses={"get_tempo": _FakeResult(status="error", detail="boom")})
     env = live_tool.execute("get_tempo", None, runtime=rt)
     assert env["ok"] is False
-    assert env["result"]["error"] == "RuntimeError"
+    assert env["result"]["error"] == "MIDI_SCRIPT_NOT_LOADED"
     assert "get_tempo failed" in env["result"]["message"]
 
 
@@ -198,13 +201,56 @@ def test_install_script_kind_installs_to_all_fl_versions(
     assert all(r["action"] == "installed" for r in env["result"]["installs"])
 
 
+def test_preflight_short_circuits_when_fl_not_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pre-flight failure for a FL-bound kind returns FL_NOT_RUNNING immediately."""
+    from flstudio_mcp.installer import verify as verify_installer
+    from flstudio_mcp.preflight import Preflight
+
+    _state_dir(tmp_path, monkeypatch)
+    monkeypatch.setattr(verify_installer, "detect_fl_processes", lambda: [])
+
+    rt = FakeRuntime()
+    pf = Preflight(runtime_factory=lambda: rt)
+    env = live_tool.execute("get_tempo", None, runtime=rt, preflight=pf)
+    assert env["ok"] is False
+    assert env["result"]["error"] == "FL_NOT_RUNNING"
+    assert "Launch FL Studio" in env["result"]["hint"]
+    # FL-bound handler must not have been called
+    assert rt.sent == []
+
+
+def test_preflight_skipped_for_local_kinds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """list_apis runs even with FL closed."""
+    from flstudio_mcp.installer import verify as verify_installer
+    from flstudio_mcp.preflight import Preflight
+
+    _state_dir(tmp_path, monkeypatch)
+    monkeypatch.setattr(verify_installer, "detect_fl_processes", lambda: [])
+
+    rt = FakeRuntime()
+    pf = Preflight(runtime_factory=lambda: rt)
+    env = live_tool.execute("list_apis", None, runtime=rt, preflight=pf)
+    assert env["ok"] is True
+
+
+def test_preflight_disabled_when_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Passing preflight=None bypasses the check entirely."""
+    _state_dir(tmp_path, monkeypatch)
+    rt = FakeRuntime(responses={"get_tempo": _FakeResult(detail="120.0")})
+    env = live_tool.execute("get_tempo", None, runtime=rt, preflight=None)
+    assert env["ok"] is True
+    assert env["result"] == {"tempo_bpm": 120.0}
+
+
 def test_unsupported_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _state_dir(tmp_path, monkeypatch)
     rt = FakeRuntime()
     env = live_tool.execute("nope", None, runtime=rt)
     assert env["ok"] is False
     assert env["result"]["error"] == "UNSUPPORTED_KIND"
-    assert "describe" in env["result"]["supported"]
+    assert "describe" in env["result"]["extra"]["supported"]
 
 
 def test_envelope_logged_to_logs_resource(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
