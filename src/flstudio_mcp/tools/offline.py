@@ -66,6 +66,10 @@ OfflineKind = Literal[
     "clone_pattern",
     # Phase 3.4.4a track color (byte-patch encoder)
     "set_track_color",
+    # Phase 3.4.4b playlist clip mutations
+    "add_clip",
+    "remove_clip",
+    "move_clip",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -91,6 +95,9 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "set_track_name",
     "clone_pattern",
     "set_track_color",
+    "add_clip",
+    "remove_clip",
+    "move_clip",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -107,6 +114,9 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "set_track_name",
         "clone_pattern",
         "set_track_color",
+        "add_clip",
+        "remove_clip",
+        "move_clip",
     }
 )
 TOOL_NAME = "offline_execute"
