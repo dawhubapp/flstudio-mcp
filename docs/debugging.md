@@ -8,18 +8,20 @@ faster than driving the server through Claude Desktop while iterating.
 
 Requires Node 18+.
 
+> All commands assume you're in the `mcp/` repo root. Replace `.` with an
+> absolute path if running from elsewhere.
+
 ### Launch
 
-From anywhere (uvx pulls fresh build each time):
+uvx-from-path (rebuilds on every launch — slow but isolated):
 
 ```sh
-npx @modelcontextprotocol/inspector uvx --from /Users/pronskiy/projects/dawhub/mcp flstudio-mcp
+npx @modelcontextprotocol/inspector uvx --from . flstudio-mcp
 ```
 
-From inside the repo (uses local `.venv`, edits picked up immediately):
+uv run (uses local `.venv` — fastest dev loop, edits picked up immediately):
 
 ```sh
-cd /Users/pronskiy/projects/dawhub/mcp
 npx @modelcontextprotocol/inspector uv run flstudio-mcp
 ```
 
@@ -45,7 +47,7 @@ useful for seeing the full lifecycle of a tool call (begin / ok / error).
 npx @modelcontextprotocol/inspector \
   -e FLSTUDIO_MCP_LOG_LEVEL=DEBUG \
   -e FLSTUDIO_MCP_NO_AUTO_INSTALL=1 \
-  uvx --from /Users/pronskiy/projects/dawhub/mcp flstudio-mcp
+  uvx --from . flstudio-mcp
 ```
 
 | Var | Effect |
@@ -74,7 +76,6 @@ tail -f ~/Library/Logs/flstudio-mcp/server.log \
 ## Run the test suite
 
 ```sh
-cd /Users/pronskiy/projects/dawhub/mcp
 uv run pytest -ra
 ```
 
