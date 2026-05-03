@@ -51,27 +51,37 @@ class SetTimeSignatureArgs(BaseModel):
 
 
 class SetChannelVolumeArgs(BaseModel):
-    iid: int = Field(..., ge=0, description="Channel-rack index (0-based).")
+    iid: int = Field(..., ge=0, description="Channel-rack index, 0-based (0 = first channel).")
     value: float = Field(..., ge=0.0, le=1.0, description="Normalized volume (0.0-1.0).")
 
 
 class SetChannelNameArgs(BaseModel):
-    iid: int = Field(..., ge=0)
+    iid: int = Field(..., ge=0, description="Channel-rack index, 0-based.")
     name: str = Field(..., min_length=1, max_length=256)
 
 
 class SetInsertVolumeArgs(BaseModel):
-    idx: int = Field(..., ge=0, description="Mixer insert index (0 = master).")
+    idx: int = Field(
+        ...,
+        ge=0,
+        description="Mixer insert index, 0-based (0 = Master, 1 = first user insert).",
+    )
     value: float = Field(..., ge=0.0, le=1.0)
 
 
 class SetInsertNameArgs(BaseModel):
-    idx: int = Field(..., ge=0)
+    idx: int = Field(..., ge=0, description="Mixer insert index, 0-based (0 = Master).")
     name: str = Field(..., min_length=1, max_length=256)
 
 
 class SetPatternNameArgs(BaseModel):
-    iid: int = Field(..., ge=0)
+    iid: int = Field(
+        ...,
+        ge=1,
+        description="Pattern index, 1-BASED (1 = first pattern). Verified against "
+        "FL Studio 2025 — pattern numbering is 1-based in both UI and API; "
+        "passing iid=0 silently no-ops.",
+    )
     name: str = Field(..., min_length=1, max_length=256)
 
 
