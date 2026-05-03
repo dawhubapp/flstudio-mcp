@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -27,6 +28,14 @@ from ..runtime.offline import (
     OfflineRuntimeError,
     default_runtime,
 )
+from ..snapshots import (
+    SnapshotError,
+    SnapshotStore,
+    _file_open_in_fl,
+)
+from ..snapshots import (
+    default_store as default_snapshot_store,
+)
 from ..telemetry import record_event
 
 OfflineKind = Literal[
@@ -37,6 +46,9 @@ OfflineKind = Literal[
     "list_patterns",
     "list_plugins",
     "list_apis",
+    # Phase 3.2 write kinds
+    "set_tempo",
+    "set_pattern_name",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -46,7 +58,10 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "list_patterns",
     "list_plugins",
     "list_apis",
+    "set_tempo",
+    "set_pattern_name",
 )
+WRITE_KINDS: frozenset[str] = frozenset({"set_tempo", "set_pattern_name"})
 TOOL_NAME = "offline_execute"
 
 _LOG = get_logger("tools.offline")
@@ -131,6 +146,36 @@ def execute(
             err=ToolError(ErrorCode.INVALID_ARGS, "args.path is required (non-empty string)"),
         )
 
+    snapshot_id: str | None = None
+    if kind in WRITE_KINDS:
+        # Refuse if FL holds the file open — its in-memory state would
+        # silently overwrite our edit on the next save.
+        target = Path(path)
+        if target.exists() and _file_open_in_fl(target):
+            return _emit_error(
+                kind=kind,
+                log_id=log_id,
+                started=started,
+                err=ToolError(
+                    ErrorCode.FL_DIALOG_BLOCKING,
+                    f"FL Studio has {target} open — close the project before writing",
+                    hint="Close the project in FL (File → Close), then retry.",
+                ),
+            )
+
+        # Auto-snapshot pre-write (Phase 3.2.2)
+        try:
+            store = _resolve_snapshot_store_for_offline()
+            meta = store.snapshot(target, kind=kind)
+            snapshot_id = meta.snapshot_id
+        except SnapshotError as exc:
+            return _emit_error(
+                kind=kind,
+                log_id=log_id,
+                started=started,
+                err=ToolError(ErrorCode.SNAPSHOT_FAILED, str(exc)),
+            )
+
     try:
         response: BridgeResponse = runtime.call(kind, args)
     except NodeNotFoundError as exc:
@@ -176,13 +221,34 @@ def execute(
             ),
         )
 
-    env = _envelope(ok=True, kind=kind, result=response.result, started_at=started, log_id=log_id)
+    result_payload = response.result
+    if snapshot_id is not None and isinstance(result_payload, dict):
+        # Embed the snapshot_id so callers can roll back via
+        # live_execute(restore_snapshot, ...).
+        result_payload = {**result_payload, "snapshot_id": snapshot_id}
+
+    env = _envelope(ok=True, kind=kind, result=result_payload, started_at=started, log_id=log_id)
     _LOG.info(
         "offline_execute ok",
         extra={"kind": kind, "log_id": log_id, "duration_ms": env["duration_ms"]},
     )
     record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
     return env
+
+
+_SNAPSHOT_STORE_OVERRIDE: SnapshotStore | None = None
+
+
+def set_snapshot_store(store: SnapshotStore | None) -> None:
+    """Override the snapshot store used for write-kind auto-snapshots."""
+    global _SNAPSHOT_STORE_OVERRIDE
+    _SNAPSHOT_STORE_OVERRIDE = store
+
+
+def _resolve_snapshot_store_for_offline() -> SnapshotStore:
+    if _SNAPSHOT_STORE_OVERRIDE is not None:
+        return _SNAPSHOT_STORE_OVERRIDE
+    return default_snapshot_store()
 
 
 def _emit_error(
@@ -240,9 +306,15 @@ def register(
             "  - list_plugins(path): flat list of plugins (channel + mixer scopes).\n"
             "  - list_apis: enumerate kinds.\n"
             "\n"
-            "Mutation kinds land in Phase 3.2 once the flpdiff TS "
-            "serializer (Phase 3.0.3) ships. Returns the same envelope "
-            "shape as live_execute: {ok, kind, result, duration_ms, log_id}."
+            "Mutation kinds (auto-snapshot before write; result includes snapshot_id):\n"
+            "  - set_tempo(path, bpm): replace the modern 0x9C tempo event.\n"
+            "  - set_pattern_name(path, iid, name): rename pattern at 1-based iid.\n"
+            "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
+            "file open (avoids in-memory state overwriting our edit).\n"
+            "Channel/insert/timesig writes land in v0.1.x.\n"
+            "\n"
+            "Returns the same envelope shape as live_execute: "
+            "{ok, kind, result, duration_ms, log_id}."
         ),
     )
     def offline_execute(kind: OfflineKind, args: dict[str, Any] | None = None) -> dict[str, Any]:

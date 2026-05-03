@@ -68,7 +68,7 @@ def test_path_required_for_non_local_kinds() -> None:
 
 def test_unsupported_kind() -> None:
     rt = FakeOfflineRuntime()
-    env = offline_tool.execute("set_tempo", {"path": "/x.flp"}, runtime=rt)
+    env = offline_tool.execute("delete_universe", {"path": "/x.flp"}, runtime=rt)
     assert env["ok"] is False
     assert env["result"]["error"] == "UNSUPPORTED_KIND"
     assert "describe" in env["result"]["extra"]["supported"]
@@ -132,3 +132,102 @@ def test_all_read_kinds_path_through(kind: str) -> None:
     assert env["ok"] is True
     assert env["kind"] == kind
     assert rt.last_call == (kind, {"path": "/x.flp"})
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.2 write-kind auto-snapshot
+# --------------------------------------------------------------------------- #
+
+
+def test_write_kind_takes_snapshot_before_bridge_call(tmp_path) -> None:
+    from flstudio_mcp import snapshots
+
+    flp = tmp_path / "demo.flp"
+    flp.write_bytes(b"FLhd\x00\x06")
+    store = snapshots.SnapshotStore(root=tmp_path / "snaps", file_open_check=False)
+    offline_tool.set_snapshot_store(store)
+    try:
+        rt = FakeOfflineRuntime(
+            response=BridgeResponse(
+                ok=True,
+                kind="set_tempo",
+                result={"path": str(flp), "bytes_written": 6},
+            )
+        )
+        env = offline_tool.execute("set_tempo", {"path": str(flp), "bpm": 145}, runtime=rt)
+    finally:
+        offline_tool.set_snapshot_store(None)
+
+    assert env["ok"] is True
+    # snapshot_id added on top of bridge result
+    assert env["result"]["snapshot_id"].startswith("demo/")
+    listed = store.list_snapshots(project_slug="demo")
+    assert len(listed) == 1
+    assert listed[0].kind == "set_tempo"
+
+
+def test_write_kind_refuses_when_fl_holds_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flp = tmp_path / "demo.flp"
+    flp.write_bytes(b"FLhd")
+    monkeypatch.setattr(offline_tool, "_file_open_in_fl", lambda _p: True)
+
+    rt = FakeOfflineRuntime()
+    env = offline_tool.execute("set_tempo", {"path": str(flp), "bpm": 145}, runtime=rt)
+    assert env["ok"] is False
+    assert env["result"]["error"] == "FL_DIALOG_BLOCKING"
+    assert rt.last_call is None  # bridge never called
+
+
+def test_write_kind_skips_fl_check_when_file_missing(tmp_path) -> None:
+    """Bridge will return its own FILE_NOT_FOUND; we shouldn't lsof a missing file."""
+    flp = tmp_path / "no_such.flp"
+    rt = FakeOfflineRuntime(
+        response=BridgeResponse(
+            ok=False,
+            kind="set_tempo",
+            error="FILE_NOT_FOUND",
+            message="not there",
+        )
+    )
+    offline_tool.set_snapshot_store(
+        __import__("flstudio_mcp.snapshots", fromlist=["SnapshotStore"]).SnapshotStore(
+            root=tmp_path / "snaps", file_open_check=False
+        )
+    )
+    try:
+        env = offline_tool.execute("set_tempo", {"path": str(flp), "bpm": 145}, runtime=rt)
+    finally:
+        offline_tool.set_snapshot_store(None)
+    # Bridge handled the missing-file case; we mapped FILE_NOT_FOUND → INVALID_ARGS
+    assert env["ok"] is False
+    assert env["result"]["error"] == "SNAPSHOT_FAILED"  # snapshot of missing file fails first
+
+
+def test_set_pattern_name_write_kind_round_trip(tmp_path) -> None:
+    from flstudio_mcp import snapshots
+
+    flp = tmp_path / "demo.flp"
+    flp.write_bytes(b"FLhd\x00\x06")
+    store = snapshots.SnapshotStore(root=tmp_path / "snaps", file_open_check=False)
+    offline_tool.set_snapshot_store(store)
+    try:
+        rt = FakeOfflineRuntime(
+            response=BridgeResponse(
+                ok=True,
+                kind="set_pattern_name",
+                result={"path": str(flp), "bytes_written": 6},
+            )
+        )
+        env = offline_tool.execute(
+            "set_pattern_name",
+            {"path": str(flp), "iid": 1, "name": "Verse-1"},
+            runtime=rt,
+        )
+    finally:
+        offline_tool.set_snapshot_store(None)
+    assert env["ok"] is True
+    assert env["result"]["snapshot_id"].startswith("demo/")
+    assert rt.last_call == (
+        "set_pattern_name",
+        {"path": str(flp), "iid": 1, "name": "Verse-1"},
+    )
