@@ -4,9 +4,10 @@ Sends a ``Command`` to FL Studio's MIDI script and waits for the
 matching ``Result``. Auto-archives the cmd/result pair after each call
 so the inbox doesn't fill up.
 
-Re_harness types are imported lazily so unit tests can exercise the
-runtime with an in-memory fake inbox without needing the dawhub
-workspace on disk.
+re_harness is a regular installed dependency (the ``re-harness`` pip
+package extracted from ``python/tools/re_harness/``). Import is lazy
+inside the dataclass so unit tests can exercise the runtime with an
+in-memory fake inbox without instantiating the real IPC.
 """
 
 from __future__ import annotations
@@ -16,8 +17,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
-
-from .._re_harness_path import ensure_re_harness_on_path
 
 if TYPE_CHECKING:
     from re_harness.ipc import Command, Result
@@ -35,8 +34,7 @@ class InboxLike(Protocol):
 
 
 def _import_ipc():
-    """Import + return the re_harness.ipc module after path injection."""
-    ensure_re_harness_on_path()
+    """Import + return the re_harness.ipc module."""
     import re_harness.ipc as ipc
 
     return ipc

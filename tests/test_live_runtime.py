@@ -96,6 +96,14 @@ def test_make_command_id_unique() -> None:
     assert len(ids) == 100
 
 
+def test_re_harness_imports_as_installed_package() -> None:
+    """re-harness is now a real pip dep — bare import must work."""
+    ipc = live._import_ipc()
+    assert hasattr(ipc, "Command")
+    assert hasattr(ipc, "Inbox")
+    assert hasattr(ipc, "default_inbox")
+
+
 def test_noop_uses_noop_kind(runtime: tuple[live.LiveRuntime, FakeInbox]) -> None:
     rt, inbox = runtime
     rt.noop()

@@ -27,15 +27,19 @@ classifiers = [
 # - PyFLP is intentionally NOT a dependency. The offline runtime calls the
 #   canonical TS parser from `flpdiff` via a Node child_process (decision #21
 #   in MCP-SPEC.md).
-# - `re_harness` lives at `../python/tools/re_harness/` and is not packaged.
-#   v0.1 imports it via sys.path injection (vendor/ in v1.0 per spec line 151).
-# - `flpdiff` (Python) is added as a path dependency for cross-project tests
-#   even though MCP doesn't import flp_diff directly. See [tool.uv.sources].
+# - `re-harness` is the standalone Python package extracted from
+#   `python/tools/re_harness/` (decision #25, see MCP-SPEC.md). Pinned via
+#   path-dep below so dev edits propagate without a reinstall; production
+#   installs (PyPI / git+) replace the source entry.
 dependencies = [
     "mcp>=1.0",
     "pydantic>=2.6",
     "click>=8.1",
+    "re-harness>=0.1.0",
 ]
+
+[tool.uv.sources]
+re-harness = { path = "../python/tools/re_harness", editable = true }
 
 [project.optional-dependencies]
 dev = [
