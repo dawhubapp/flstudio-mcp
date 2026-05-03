@@ -25,6 +25,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,7 @@ from typing import Any
 
 from ..logging_setup import get_logger
 
-DEFAULT_TIMEOUT_S = 15.0
+DEFAULT_TIMEOUT_S = 8.0  # tightened from 15s — bridge cold-start is ~25ms, real work <2s
 BRIDGE_ENV_VAR = "FLSTUDIO_MCP_BRIDGE_CMD"
 
 _LOG = get_logger("runtime.offline")
@@ -112,10 +113,26 @@ class OfflineRuntime:
     def call(self, kind: str, args: dict[str, Any] | None = None) -> BridgeResponse:
         """Send {kind, args} to the bridge subprocess, parse stdout JSON."""
         request = json.dumps({"kind": kind, "args": args or {}})
+        # Diagnostic: track open-fd count + spawn latency so a future
+        # bridge hang has forensics. Reproducible-after-N-calls bugs
+        # almost always look like a leak somewhere on the path.
+        try:
+            import resource
+
+            soft_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        except Exception:
+            soft_fd_limit = -1
         _LOG.info(
             "offline call",
-            extra={"kind": kind, "cmd": list(self.cmd), "args_keys": sorted((args or {}).keys())},
+            extra={
+                "kind": kind,
+                "cmd": list(self.cmd),
+                "args_keys": sorted((args or {}).keys()),
+                "request_bytes": len(request),
+                "soft_fd_limit": soft_fd_limit,
+            },
         )
+        spawn_t0 = time.monotonic()
         try:
             proc = subprocess.run(
                 self.cmd,
@@ -127,11 +144,24 @@ class OfflineRuntime:
             )
         except subprocess.TimeoutExpired as exc:
             raise OfflineRuntimeError(
-                f"bridge timed out after {self.timeout_s}s for kind={kind!r}"
+                f"bridge timed out after {self.timeout_s}s for kind={kind!r} "
+                f"(spawn-to-timeout took {time.monotonic() - spawn_t0:.2f}s; "
+                f"check `lsof -p $(pgrep -f flstudio-mcp)` for fd accumulation)"
             ) from exc
         except FileNotFoundError as exc:
             raise NodeNotFoundError(f"bridge command not executable: {' '.join(self.cmd)}") from exc
 
+        spawn_ms = round((time.monotonic() - spawn_t0) * 1000.0, 1)
+        _LOG.info(
+            "offline call done",
+            extra={
+                "kind": kind,
+                "spawn_ms": spawn_ms,
+                "stdout_bytes": len(proc.stdout),
+                "stderr_bytes": len(proc.stderr),
+                "returncode": proc.returncode,
+            },
+        )
         if proc.returncode != 0:
             raise OfflineRuntimeError(
                 f"bridge exit={proc.returncode} stderr={proc.stderr.strip()[:300]}"
