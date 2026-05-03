@@ -133,14 +133,13 @@ def test_resolve_active_project_with_path_override(tmp_path: Path) -> None:
 def test_describe_uses_window_title_fallback_when_flp_path_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """FL 2025 API gap: getCurrentFilename() doesn't exist; fallback resolves via window."""
+    """FL 2025 API gap: no in-script filename accessor; AppleScript fallback resolves it."""
     payload = _describe_detail(flp_path="ERR:no such attribute", project_title="ERR:also missing")
     rt = FakeRuntime(detail=payload)
     fallback_path = "/Users/me/Documents/Image-Line/FL Studio/Projects/track.flp"
     monkeypatch.setattr(state, "resolve_flp_path_from_fl_window", lambda: fallback_path)
     s = state.describe_active_project(rt, state_dir=tmp_path)
     assert s.flp_path == fallback_path
-    # project_title was None (from ERR:); falls back to filename stem
     assert s.project_title == "track"
 
 

@@ -205,25 +205,19 @@ def _resolve_flp_filename_via_mdfind(filename: str) -> str | None:
     return str(existing[0])
 
 
-def resolve_flp_path_from_fl_window() -> str | None:
-    """Best-effort FL project path from window title + Spotlight.
-
-    Workaround for FL 2025's missing ``general.getCurrentFilename()``.
-    Returns the absolute path or ``None`` on failure.
-    """
-    title = _read_fl_window_title()
+def _path_from_window_title(title: str | None) -> str | None:
+    """Parse a FL-style window title (`track.flp - FL Studio 2025`) → full path."""
     if not title:
-        _LOG.info("fl window title empty / unreachable")
         return None
     match = _FL_TITLE_FILENAME_RE.search(title)
     if not match:
-        _LOG.info("fl window title has no .flp filename", extra={"title": title})
+        _LOG.info("window title has no .flp filename", extra={"title": title})
         return None
     fl_filename = match.group(1).lstrip("*").rstrip("*").strip()
     full = _resolve_flp_filename_via_mdfind(fl_filename)
     if full:
         _LOG.info(
-            "resolved flp_path via window title + mdfind",
+            "resolved flp_path from window title + mdfind",
             extra={"fl_filename": fl_filename, "path": full},
         )
     else:
@@ -234,11 +228,24 @@ def resolve_flp_path_from_fl_window() -> str | None:
     return full
 
 
+def resolve_flp_path_from_fl_window() -> str | None:
+    """Last-resort FL project path via AppleScript → window title → Spotlight.
+
+    Used only when `describe` didn't return a usable `window_title` (FL
+    not running, Accessibility perm missing, etc.). Costs ~80 ms.
+    """
+    return _path_from_window_title(_read_fl_window_title())
+
+
 def describe_active_project(runtime, *, state_dir: Path | None = None) -> ProjectState:
     """Send ``describe`` to FL, parse, cache, return.
 
-    If the parsed state has no ``flp_path`` (FL API doesn't expose it on
-    this build), try the AppleScript-window-title fallback.
+    FL 2025's `general` module exposes no current-file accessor (and
+    `ui.getProgTitle()` returns just "FL Studio 2025", not the window
+    title with filename). When `flp_path` is missing we fall back to
+    AppleScript reading the macOS-level window title via System Events,
+    then Spotlight (mdfind) for full-path resolution. Adds ~80 ms;
+    only runs when FL itself didn't return a path.
     """
     result = runtime.send("describe")
     if getattr(result, "status", None) != "ok":

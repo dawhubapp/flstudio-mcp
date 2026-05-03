@@ -194,6 +194,13 @@ def _handle_describe(args):
 
     _try("tempo", lambda: mixer.getCurrentTempo())  # type: ignore[name-defined]
     _try("project_title", lambda: general.getProjectTitle())  # type: ignore[name-defined]
+    # FL's MIDI-scripting API has no current-file accessor:
+    #   * general.getCurrentFilename — doesn't exist (verified via docs +
+    #     runtime probe on FL 25.2.4 / 2025).
+    #   * ui.getProgTitle — returns just "FL Studio 2025" (program name),
+    #     not the window title with filename.
+    # The orchestrator falls back to AppleScript reading the macOS-level
+    # window title + Spotlight (mdfind) for full path resolution.
     _try("flp_path", lambda: general.getCurrentFilename())  # type: ignore[name-defined]
     _try("channel_count", lambda: channels.channelCount())  # type: ignore[name-defined]
     _try("pattern_count", lambda: patterns.patternCount())  # type: ignore[name-defined]
