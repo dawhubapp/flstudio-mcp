@@ -58,50 +58,54 @@ Expected behavior chain:
 
 ---
 
-## Capability gaps (what we need to add before this demo fully works)
+## Capability map
 
-### Already shipped (Phase 2.2 + 2.3)
-- ✅ `set_channel_name`
-- ✅ `set_insert_name`
-- ✅ `set_pattern_name`
+This demo runs **fully offline** through `offline_execute` — FL
+Studio doesn't need to be open. The offline path bypasses FL's
+playlist-API gap entirely by mutating the `.flp` file's bytes
+directly via the canonical TS parser + serializer.
+
+### Live + offline (`live_execute` + `offline_execute`, Phase 2.2 + 2.3)
+- ✅ `set_channel_name`, `set_insert_name`, `set_pattern_name`
 - ✅ `save` + `restore_snapshot`
-- ✅ `get_pattern_steps` (read step grid per channel)
+- ✅ `get_pattern_steps` (read step grid per channel — live only)
 
-### Missing — small additions (~30 min each)
-These all wrap a single FL API call that's already exposed in the
-MIDI scripting surface (verified via `list_apis` probe on FL 2025).
-Add as Phase 2.6 — Color + Routing kinds:
+### Offline-only (Phase 3.4 — this is where the demo lives)
+- ✅ Reads: `describe`, `list_channels`, `list_mixer`, `list_patterns`,
+  `list_arrangements`, `list_tracks`, `list_clips` — full project
+  introspection without launching FL.
+- ✅ Names: `set_arrangement_name`, `set_track_name`,
+  `set_pattern_name`, `set_channel_name`, `set_insert_name`.
+- ✅ Colors: `set_channel_color`, `set_insert_color`,
+  `set_pattern_color`, `set_track_color`.
+- ✅ Routing: `set_channel_routing(iid, target_insert)` — sends a
+  channel to a specific mixer insert.
+- ✅ Pattern lifecycle: `clone_pattern(source_iid, name?)` — duplicates
+  notes + controllers + name + color + length.
+- ✅ Playlist clips: `add_clip(arrangement, kind, ref_id, track_index,
+  position_ticks, length_ticks)`, `remove_clip(arrangement, match)`,
+  `move_clip(arrangement, match, {to_track_index?, to_position_ticks?})`.
 
-- ⏸️ `set_channel_color(iid, color)` — wraps `channels.setChannelColor`
-- ⏸️ `set_insert_color(idx, color)` — wraps `mixer.setTrackColor`
-- ⏸️ `set_pattern_color(iid, color)` — wraps `patterns.setPatternColor`
-- ⏸️ `link_channel_to_insert(channel_iid, insert_idx)` — wraps
-  `mixer.linkChannelToTrack`
-- ⏸️ `clone_pattern(source_iid, new_name)` — wraps `patterns.clonePattern`
+### Why offline beats live for this demo
+1. **No playlist API gap.** FL 2025's MIDI scripting surface exposes
+   nothing for playlist tracks — no add/delete/rename/color/move.
+   Offline mode writes the bytes directly.
+2. **No FL window required.** The user doesn't have to launch FL,
+   wait for it to open, or have it on screen during the rewrite.
+3. **Auto-snapshot before every write.** Each mutation snapshots
+   the file first; `restore_snapshot` rolls back any single op.
+4. **Round-trip safe.** All 105 corpus FLPs (including 100+ personal
+   projects) survive `parse → serialize → parse` byte-exact.
 
-Each follows the existing dispatcher pattern (pydantic schema +
-auto-snapshot + IPC handler in `device_flstudio_mcp.py`).
-
-### Blocked — needs FL API extension or pyscript bridge
-- ❌ Move pattern blocks between playlist tracks (no playlist
-  manipulation API in `channels`/`patterns`/`mixer`/`general`/
-  `transport`/`ui`/`plugins` modules per FL 2025)
-- ❌ Add/delete playlist tracks
-- ❌ Rename playlist tracks
-- ❌ Color playlist tracks
-- ❌ Read playlist arrangement (which patterns are on which tracks at
-  what time positions)
-
-The "make it look like Ableton" playlist rearrangement is the
-**playlist-tracks** part, which is the part FL's MIDI scripting API
-does not expose at all. To fully realize this demo we need either:
-1. Image-Line to expose a playlist module (file an issue), or
-2. A `flpianoroll`-style pyscript bridge for playlist manipulation
-   (queued behind the piano-roll bridge work — decision #31)
-
-For v0.5 the demo ships a **partial reorganize**: rename + color +
-re-route at the channel/insert/pattern level. The visual playlist
-tidy-up is left to the user.
+### Known limits (not blockers for this demo)
+- ⏸️ Channel/insert color via the live API (`channels.setChannelColor`,
+  `mixer.setTrackColor`, `patterns.setPatternColor`,
+  `mixer.linkChannelToTrack`) — Phase 2.6, not yet wired. **Live mode
+  doesn't need them since the offline path covers the demo.**
+- ⏸️ Live `link_channel_to_insert` wraps `mixer.linkChannelToTrack` —
+  same comment.
+- ❌ Per-clip color, fade, stretch — out of scope; FL's clip records
+  expose flags + offsets but no clip-level color.
 
 ---
 
