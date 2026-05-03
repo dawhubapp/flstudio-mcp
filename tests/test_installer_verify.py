@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -49,21 +47,15 @@ def _stub_install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, install: bool
     monkeypatch.setattr(midi_script, "FL_USERDATA_PARENT", parent)
 
 
-def _stub_run(monkeypatch: pytest.MonkeyPatch, *, fl_running: bool = True) -> None:
-    """Patch verify._run to fake pgrep + osascript outputs."""
-
-    def fake_run(cmd: list[str], *, timeout: float = 10.0) -> subprocess.CompletedProcess:
-        if cmd[:1] == [verify.PGREP]:
-            rc = 0 if fl_running else 1
-            stdout = "1234\n" if fl_running else ""
-            return subprocess.CompletedProcess(cmd, rc, stdout, "")
-        raise AssertionError(f"unexpected cmd: {cmd}")
-
-    monkeypatch.setattr(verify, "_run", fake_run)
-
-
-def _stub_script_output(monkeypatch: pytest.MonkeyPatch, text: str, *, ok: bool = True) -> None:
-    monkeypatch.setattr(verify, "read_fl_script_output", lambda timeout=10.0: (ok, text))
+def _stub_run(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fl_running: bool = True,
+    process_name: str = "FL Studio 2025",
+) -> None:
+    """Patch verify.detect_fl_processes to a fake list."""
+    procs: list[tuple[str, int]] = [(process_name, 1234)] if fl_running else []
+    monkeypatch.setattr(verify, "detect_fl_processes", lambda: procs)
 
 
 # --------------------------------------------------------------------------- #
@@ -106,37 +98,18 @@ def test_check_script_no_fl_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 def test_check_fl_running(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_run(monkeypatch, fl_running=True)
+    _stub_run(monkeypatch, fl_running=True, process_name="FL Studio 2025")
     step = verify.check_fl_running()
     assert step.ok is True
-    assert step.data == {"pids": [1234]}
+    assert "FL Studio 2025" in step.detail
+    assert step.data == {"processes": [{"name": "FL Studio 2025", "pid": 1234}]}
 
 
 def test_check_fl_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_run(monkeypatch, fl_running=False)
     step = verify.check_fl_running()
     assert step.ok is False
-    assert "not found" in step.detail
-
-
-def test_check_script_output_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_script_output(monkeypatch, "[flstudio-mcp] started, polling /tmp/runtime/inbox\n")
-    step = verify.check_script_output_loaded()
-    assert step.ok is True
-
-
-def test_check_script_output_missing_marker(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_script_output(monkeypatch, "FL Studio Midi scripting version: 40\n")
-    step = verify.check_script_output_loaded()
-    assert step.ok is False
-    assert "does not contain" in step.detail
-
-
-def test_check_script_output_read_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_script_output(monkeypatch, "AS_ERROR: window not found", ok=False)
-    step = verify.check_script_output_loaded()
-    assert step.ok is False
-    assert "could not read" in step.detail
+    assert "FL Studio" in step.detail
 
 
 def test_check_ipc_handshake_ok() -> None:
@@ -176,7 +149,6 @@ def test_verify_setup_full_chain_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     _stub_iac(monkeypatch, ok=True)
     _stub_install(monkeypatch, tmp_path, install=True)
     _stub_run(monkeypatch, fl_running=True)
-    _stub_script_output(monkeypatch, "[flstudio-mcp] started\n")
     rt = FakeRuntime()
 
     result = verify.verify_setup(rt)
@@ -185,7 +157,6 @@ def test_verify_setup_full_chain_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         "iac_driver_online",
         "script_installed",
         "fl_studio_running",
-        "script_output_loaded",
         "ipc_handshake",
     ]
 
@@ -224,33 +195,27 @@ def test_verify_setup_fl_not_running(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert result.steps[-1].name == "fl_studio_running"
 
 
-def test_verify_setup_skip_ui_skips_script_output(
+def test_verify_setup_skip_ui_arg_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """skip_ui is reserved but must not break callers that pass it."""
     _stub_iac(monkeypatch, ok=True)
     _stub_install(monkeypatch, tmp_path, install=True)
     _stub_run(monkeypatch, fl_running=True)
-
-    def fail_if_called(*_a: Any, **_k: Any) -> None:
-        pytest.fail("read_fl_script_output should not run when skip_ui=True")
-
-    monkeypatch.setattr(verify, "read_fl_script_output", fail_if_called)
     rt = FakeRuntime()
     result = verify.verify_setup(rt, skip_ui=True)
     assert result.ok is True
-    assert "script_output_loaded" not in [s.name for s in result.steps]
 
 
-def test_verify_setup_ipc_failure_after_ui_pass(
+def test_verify_setup_ipc_failure_with_actionable_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """All UI checks pass but IPC noop times out — likely Controller type wrong."""
+    """IPC noop times out — likely Controller type wrong / script not loaded."""
     _stub_iac(monkeypatch, ok=True)
     _stub_install(monkeypatch, tmp_path, install=True)
     _stub_run(monkeypatch, fl_running=True)
-    _stub_script_output(monkeypatch, "[flstudio-mcp] started\n")
     rt = FakeRuntime(raise_timeout=True)
     result = verify.verify_setup(rt)
     assert result.ok is False
     assert result.steps[-1].name == "ipc_handshake"
-    assert "handshake" in result.summary
+    assert "Update MIDI scripts" in result.summary

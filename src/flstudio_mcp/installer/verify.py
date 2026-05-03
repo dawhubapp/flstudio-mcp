@@ -32,11 +32,22 @@ from . import iac as iac_installer
 from . import midi_script as midi_installer
 
 OSASCRIPT = "osascript"
-PGREP = "pgrep"
-FL_PROCESS_NAME = "FL Studio"
 SCRIPT_STARTED_MARKER = "[flstudio-mcp] started"
 NOOP_TIMEOUT_S = 3.0
 SUBPROCESS_TIMEOUT_S = 10.0
+# FL ships its macOS binary as OsxFL inside `FL Studio <year>.app`.
+# System Events surfaces FL 2025+ as "OsxFL"; older FL versions (and
+# `tell application "FL Studio"` Apple Events) can surface it as
+# "FL Studio". Match both so version-mixed setups all work.
+_FL_PROCESS_DETECT_APPLESCRIPT = r"""
+tell application "System Events"
+    set out to ""
+    repeat with p in (every process whose name is "OsxFL" or name starts with "FL Studio")
+        set out to out & (name of p) & "|" & (unix id of p) & linefeed
+    end repeat
+    return out
+end tell
+"""
 
 _LOG = get_logger("installer.verify")
 
@@ -114,42 +125,58 @@ def _run(cmd: list[str], *, timeout: float = SUBPROCESS_TIMEOUT_S) -> subprocess
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
 
 
-def check_fl_running() -> VerifyStep:
+def detect_fl_processes() -> list[tuple[str, int]]:
+    """Return list of ``(process_name, pid)`` for every running FL Studio*."""
     try:
-        proc = _run([PGREP, "-x", FL_PROCESS_NAME])
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        proc = _run([OSASCRIPT, "-e", _FL_PROCESS_DETECT_APPLESCRIPT])
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    if proc.returncode != 0:
+        return []
+    out: list[tuple[str, int]] = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        name, _, pid_str = line.partition("|")
+        try:
+            out.append((name.strip(), int(pid_str.strip())))
+        except ValueError:
+            continue
+    return out
+
+
+def check_fl_running() -> VerifyStep:
+    procs = detect_fl_processes()
+    if not procs:
         return VerifyStep(
             name="fl_studio_running",
             ok=False,
-            detail=f"could not run pgrep: {exc}",
+            detail="No 'FL Studio*' process found — open FL Studio before verifying",
         )
-    if proc.returncode == 0 and proc.stdout.strip():
-        pids = [int(x) for x in proc.stdout.split() if x.strip().isdigit()]
-        return VerifyStep(
-            name="fl_studio_running",
-            ok=True,
-            detail=f"running (pid {pids[0]})" if pids else "running",
-            data={"pids": pids},
-        )
+    name, pid = procs[0]
     return VerifyStep(
         name="fl_studio_running",
-        ok=False,
-        detail="FL Studio process not found — open it before verifying",
+        ok=True,
+        detail=f"running: {name} (pid {pid})",
+        data={"processes": [{"name": n, "pid": p} for n, p in procs]},
     )
 
 
-_READ_SCRIPT_OUTPUT_APPLESCRIPT = r"""
-tell application "FL Studio" to activate
+_READ_SCRIPT_OUTPUT_TEMPLATE = r"""
+tell application "System Events"
+    tell process "%(process_name)s"
+        set frontmost to true
+    end tell
+end tell
 delay 0.2
 tell application "System Events"
-    tell process "FL Studio"
+    tell process "%(process_name)s"
         try
-            -- Open Script output window if not visible.
             if not (exists window "Script output") then
                 click menu item "Script output" of menu "View" of menu bar 1
                 delay 0.4
             end if
-            -- Read everything from the text area inside it.
             set t to value of text area 1 of scroll area 1 of window "Script output"
             return t
         on error errMsg
@@ -160,10 +187,18 @@ end tell
 """
 
 
-def read_fl_script_output(timeout: float = SUBPROCESS_TIMEOUT_S) -> tuple[bool, str]:
+def read_fl_script_output(
+    *, process_name: str | None = None, timeout: float = SUBPROCESS_TIMEOUT_S
+) -> tuple[bool, str]:
     """Return ``(ok, text_or_error)`` from FL's Script output window."""
+    if process_name is None:
+        procs = detect_fl_processes()
+        if not procs:
+            return False, "FL Studio process not found"
+        process_name = procs[0][0]
+    script = _READ_SCRIPT_OUTPUT_TEMPLATE % {"process_name": process_name}
     try:
-        proc = _run([OSASCRIPT, "-e", _READ_SCRIPT_OUTPUT_APPLESCRIPT], timeout=timeout)
+        proc = _run([OSASCRIPT, "-e", script], timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return False, f"osascript invocation failed: {exc}"
     if proc.returncode != 0:
@@ -251,10 +286,12 @@ def verify_setup(runtime, *, skip_ui: bool = False) -> VerifyResult:
         A LiveRuntime-shaped object with a ``noop()`` method. Pass a
         fake to keep tests off real FL.
     skip_ui
-        If True, skip the AppleScript-driven Script output read. Useful
-        when running headless (CI) or when accessibility perms aren't
-        granted yet.
+        Reserved (currently no-op). FL renders Script output as an
+        internal panel rather than a native window, so System Events
+        can't read its text — the IPC handshake is a stronger proof of
+        script-loaded anyway.
     """
+    del skip_ui  # reserved
     steps: list[VerifyStep] = []
 
     iac_step = check_iac()
@@ -278,24 +315,18 @@ def verify_setup(runtime, *, skip_ui: bool = False) -> VerifyResult:
     if not running_step.ok:
         return VerifyResult(ok=False, steps=steps, summary="FL Studio is not running")
 
-    if not skip_ui:
-        loaded_step = check_script_output_loaded()
-        steps.append(loaded_step)
-        if not loaded_step.ok:
-            return VerifyResult(
-                ok=False,
-                steps=steps,
-                summary=(
-                    "FL Studio is running but hasn't loaded the script — wire it "
-                    "via Options → MIDI Settings → Update MIDI scripts → set "
-                    "Controller type to 'flstudio-mcp'"
-                ),
-            )
-
     handshake_step = check_ipc_handshake(runtime)
     steps.append(handshake_step)
     if not handshake_step.ok:
-        return VerifyResult(ok=False, steps=steps, summary="IPC handshake failed — see step detail")
+        return VerifyResult(
+            ok=False,
+            steps=steps,
+            summary=(
+                "FL Studio is running but the script isn't responding — open "
+                "Options → MIDI Settings → click 'Update MIDI scripts', then "
+                "set IAC Driver Bus 1 input's Controller type to 'flstudio-mcp'"
+            ),
+        )
 
     return VerifyResult(
         ok=True, steps=steps, summary="all checks passed — flstudio-mcp is wired up"
