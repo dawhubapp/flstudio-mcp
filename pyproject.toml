@@ -36,6 +36,9 @@ dependencies = [
     "pydantic>=2.6",
     "click>=8.1",
     "re-harness>=0.1.0",
+    # pyautogui drives FL's Settings dialog (no AX tree available — dialog
+    # is rendered with FL's custom UI). Used by installer.wire_fl only.
+    "pyautogui>=0.9.54",
 ]
 
 [tool.uv.sources]

@@ -24,6 +24,7 @@ from .. import state as state_mod
 from ..installer import iac as iac_installer
 from ..installer import midi_script as midi_installer
 from ..installer import verify as verify_installer
+from ..installer import wire_fl as wire_fl_installer
 from ..logging_setup import get_logger
 from ..runtime.live import LiveRuntime
 from ..telemetry import record_event
@@ -36,6 +37,7 @@ LiveKind = Literal[
     "check_iac",
     "enable_iac",
     "verify_setup",
+    "wire_input",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -45,6 +47,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "check_iac",
     "enable_iac",
     "verify_setup",
+    "wire_input",
 )
 TOOL_NAME = "live_execute"
 
@@ -139,6 +142,15 @@ def _do_verify_setup(args: dict[str, Any], runtime: LiveRuntime) -> dict[str, An
     return result.to_dict()
 
 
+def _do_wire_input(args: dict[str, Any]) -> dict[str, Any]:
+    """Drive FL Settings via pyautogui to bind IAC input → flstudio-mcp script."""
+    dry_run = bool(args.get("dry_run", False))
+    coords_override = args.get("coords")
+    coords = wire_fl_installer.WireCoords(**coords_override) if coords_override else None
+    result = wire_fl_installer.wire_flstudio_mcp_input(coords=coords, dry_run=dry_run)
+    return result.to_dict()
+
+
 def _do_check_iac() -> dict[str, Any]:
     return iac_installer.check_iac_status().to_dict()
 
@@ -186,6 +198,8 @@ def execute(
             result = _do_enable_iac()
         elif kind == "verify_setup":
             result = _do_verify_setup(args, runtime)
+        elif kind == "wire_input":
+            result = _do_wire_input(args)
         else:
             envelope = _envelope(
                 ok=False,
@@ -271,6 +285,10 @@ def register(server: FastMCP, runtime_factory: Callable[[], LiveRuntime]) -> Non
             "  - verify_setup: end-to-end check (IAC + script installed + FL "
             "running + Script output marker + IPC handshake). Args: "
             "{skip_ui?: bool} to skip the AppleScript-driven UI checks.\n"
+            "  - wire_input: drive FL MIDI Settings via pyautogui to bind IAC "
+            "Driver Bus 1 input to the flstudio-mcp script (one-time setup). "
+            "Args: {dry_run?: bool, coords?: {update_scripts_btn:[x,y], "
+            "iac_input_row:[x,y], enable_radio:[x,y], controller_dropdown:[x,y]}}.\n"
             "\n"
             "Returns: {ok, kind, result, duration_ms, log_id}. Use the "
             "logs://recent resource (filter by log_id) for full call detail."
