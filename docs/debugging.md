@@ -33,8 +33,9 @@ The Inspector opens at `http://localhost:5173`.
 |-----------|-------------------|---------|
 | `live_execute` `kind: list_apis` | no | Sanity check — server up, kinds enumerated |
 | `live_execute` `kind: check_iac` | no | Verify IAC Driver detection |
-| `live_execute` `kind: install_script` | no | Re-run MIDI script installer |
+| `live_execute` `kind: install_script` | no | Re-run MIDI script installer (covers all FL versions) |
 | `live_execute` `kind: enable_iac` | no | Best-effort UI-scripting flip |
+| `live_execute` `kind: verify_setup` | partial | End-to-end chain check; reports IAC + script + FL + IPC. Run this first when something's wrong. |
 | `live_execute` `kind: describe` | yes | Project state from running FL |
 | `live_execute` `kind: get_tempo` | yes | Tempo readback |
 

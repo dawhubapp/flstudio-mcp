@@ -105,11 +105,19 @@ launching the server, or pass
 **Verify** in FL: View → Script output. You should see:
 
 ```
-[flstudio-mcp] started, polling /Users/.../flpdiff-harness/runtime/inbox
+[flstudio-mcp] started, polling /Users/.../flstudio-mcp/runtime/inbox
 ```
 
-If that line appears, MCP can talk to FL. From here `live_execute(kind="describe")`
-should return project state.
+If that line appears, MCP can talk to FL. Confirm end-to-end in one call:
+
+```
+live_execute(kind="verify_setup")
+```
+
+Returns `ok: true` when every link is wired (IAC online + script
+installed + FL running + IPC handshake succeeds). On failure each step
+reports its own `ok` + actionable detail so you can find which link is
+broken without trawling logs.
 
 ### b. The IAC Driver must be online
 
