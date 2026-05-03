@@ -20,7 +20,25 @@ Expected behavior: Claude calls `live_execute(kind="list_apis")` and
 summarizes the supported `kind` enum.
 
 ```
-<paste actual Claude response here>
+There's exactly one FL Studio tool: `flstudio:live_execute`, a single entry point with 8 supported "kinds". Here's the actual surface area:
+
+**Inspection (read-only)**
+- `describe` — project path, title, tempo, channel/pattern/insert counts, FL version
+- `get_tempo` — current BPM
+- `list_apis` — enumerates supported kinds
+
+**Setup & diagnostics (macOS-specific)**
+- `install_script` — re-runs the bundled FL MIDI script installer
+- `check_iac` — reports IAC Driver state (online/offline/not_installed)
+- `enable_iac` — UI-scripting attempt to flip IAC online
+- `verify_setup` — end-to-end check (IAC + script + FL running + IPC handshake)
+- `wire_input` — pyautogui-driven binding of IAC Bus 1 to the FL MIDI script
+
+**Honest take, since you asked:** this is v0.1 and it shows. It's almost entirely plumbing — most of the surface is "is the IAC bridge wired up correctly?" The only creative read is project metadata and tempo. There's no transport control, no MIDI write, no pattern/channel manipulation, no mixer access, no plugin parameter control, no render/export. You can't actually *do* anything to a project, only ask FL what it currently looks like.
+
+Given your interest in wrapping FL Studio as an MCP server for agentic DAW control, this is the seed of that idea, not the thing itself. The IAC + MIDI script foundation is the right plumbing choice (going through the documented MIDI scripting API beats hacking at the binary), but the agent-useful verbs — note input, transport, pattern editing, mixer routing, plugin automation — are all still to be built. If you wanted to ship the paid desktop app you've been thinking about, you'd basically be building on top of this scaffolding rather than extending a mostly-complete API.
+
+Want me to actually call `describe` against your running FL instance to see what state it reports?
 ```
 
 ---
@@ -49,7 +67,16 @@ Expected JSON envelope (real values from your machine will differ):
 ```
 
 ```
-<paste actual Claude response here>
+All green. Four steps, all passed:
+
+1. **IAC driver online** — CoreMIDI sees 1 destination + 1 source, IAC plugin present
+2. **Script installed** — `device_flstudio_mcp.py` found in your FL Studio Settings/Hardware folder
+3. **FL Studio running** — OsxFL, pid 61753
+4. **IPC handshake** — noop round-tripped in 124ms
+
+Total verify took 3.5s, mostly the UI/AppleScript checks. The handshake itself is fast, so latency to FL won't be the bottleneck for whatever you build next.
+
+Ready when you are — want me to `describe` the current project?
 ```
 
 ---
@@ -83,7 +110,13 @@ Expected JSON envelope from `describe`:
 ```
 
 ```
-<paste actual Claude response here>
+- **Tempo:** 130 BPM
+- **Channels:** 5
+- **Patterns:** 0
+
+One thing worth flagging: pattern count is 0 and project title/path are both null, which means this is an unsaved, untouched new project — you've got 5 channels in the rack but haven't actually committed any notes to a pattern yet. If you were expecting to inspect a real session, you might have the wrong FL window focused, or just not opened the .flp you meant to.
+
+For reference, you're on Producer Edition v25.2.4 (build 4960).
 ```
 
 ---
