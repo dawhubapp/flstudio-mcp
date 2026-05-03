@@ -42,6 +42,11 @@ The Inspector opens at `http://localhost:5173`.
 The `logs://recent` resource returns the last 50 structured log entries —
 useful for seeing the full lifecycle of a tool call (begin / ok / error).
 
+The `snapshots://recent` resource returns the last 100 FLP snapshots
+(newest first) with `snapshot_id`, `project_slug`, `original_path`,
+`created_at`, `sha256`, `size_bytes`, `kind`, `command_id`. Snapshots
+live under `~/Library/Application Support/flstudio-mcp/snapshots/`.
+
 ### Pass env vars
 
 ```sh
