@@ -52,6 +52,11 @@ OfflineKind = Literal[
     "set_channel_name",
     "set_insert_name",
     "set_time_signature",
+    # Phase 3.4.1 colors + routing
+    "set_channel_color",
+    "set_insert_color",
+    "set_pattern_color",
+    "set_channel_routing",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -66,6 +71,10 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "set_channel_name",
     "set_insert_name",
     "set_time_signature",
+    "set_channel_color",
+    "set_insert_color",
+    "set_pattern_color",
+    "set_channel_routing",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -74,6 +83,10 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "set_channel_name",
         "set_insert_name",
         "set_time_signature",
+        "set_channel_color",
+        "set_insert_color",
+        "set_pattern_color",
+        "set_channel_routing",
     }
 )
 TOOL_NAME = "offline_execute"
