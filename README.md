@@ -28,11 +28,25 @@ uvx --from git+https://github.com/<org>/flstudio-mcp flstudio-mcp
 
 (Org TBD — see Phase 1.1.4 in the spec.)
 
+Server install ≠ ready to use. You also need to:
+
+1. Enable the **IAC Driver** in Audio MIDI Setup (one-time).
+2. Wire the auto-installed MIDI script inside FL Studio (Options →
+   MIDI Settings → enable IAC input → set Controller type to
+   `flstudio-mcp`).
+
+Full step-by-step: **[`docs/install.md`](docs/install.md)**.
+
+## Debugging
+
+Use the MCP Inspector to call tools / resources directly from a browser
+UI: **[`docs/debugging.md`](docs/debugging.md)**.
+
 ## Development
 
 ```sh
 cd mcp
-uv sync
+uv sync --extra dev
 uv run pytest
 uv run ruff check .
 ```

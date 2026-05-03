@@ -64,16 +64,38 @@ flstudio-mcp depends on three pieces of host state. The server checks the
 first two on boot and surfaces clear errors via `live_execute` for the
 third.
 
-### a. The bundled MIDI script must be in FL's Hardware dir
+### a. The bundled MIDI script must be in FL's Hardware dir + wired up
 
-Auto-installed on server start. To re-run manually:
+The auto-installer (or `live_execute(kind="install_script")`) does three
+things:
+
+1. Copies `device_flstudio_mcp.py` into
+   `~/Documents/Image-Line/FL Studio/Settings/Hardware/`.
+2. Pre-creates the IPC runtime dirs
+   (`flpdiff-harness/runtime/{inbox,outbox,processed}`) — required
+   because FL's sandboxed Python can't create them itself.
+3. Drops a `.version.json` sidecar so future installs are idempotent.
+
+**You still have to wire the script inside FL once:**
+
+1. **Restart FL Studio** (or, if FL was already running, click
+   **Reload script** in MIDI Settings).
+2. Open **Options → MIDI Settings** (`F10`).
+3. In the **Input** list, highlight **`IAC Driver Bus 1`**.
+4. Click **Enable**.
+5. Set **Controller type** to **`flstudio-mcp`** (this matches the
+   `# name=flstudio-mcp` line at the top of the bundled script).
+6. Optionally set **Port** to any number (1 is fine).
+7. Close the dialog.
+
+**Verify** in FL: View → Script output. You should see:
 
 ```
-live_execute(kind="install_script")
+[flstudio-mcp] started, polling /Users/.../flpdiff-harness/runtime/inbox
 ```
 
-After installation reload the device inside FL Studio:
-**Options → MIDI Settings → click the Refresh button**.
+If that line appears, MCP can talk to FL. From here `live_execute(kind="describe")`
+should return project state.
 
 ### b. The IAC Driver must be online
 
@@ -140,5 +162,6 @@ The `logs://recent` MCP resource returns the last 50 entries.
 |---------|--------------|-----|
 | `IAC_DRIVER_OFFLINE` | IAC bus disabled in Audio MIDI Setup | Section 3.b |
 | `HARDWARE_DIR_MISSING` install action | FL Studio 25.x not installed | Install FL Studio |
-| Server hangs on `live_execute(kind="describe")` | FL closed, or MIDI script not reloaded | Open FL → Options → MIDI Settings → Refresh |
+| Server hangs on `live_execute(kind="describe")` | FL closed, or MIDI script not reloaded, or IAC input not enabled | Restart FL or click Reload script; verify Section 3.a steps 2–6 |
+| FL Script output doesn't show `[flstudio-mcp] started ...` | Controller type not set to `flstudio-mcp`, or IAC input not enabled | Re-do Section 3.a steps 3–5 |
 | Auto-enable IAC silently no-ops | Accessibility permission missing | System Settings → Privacy & Security → Accessibility → enable for terminal/IDE |

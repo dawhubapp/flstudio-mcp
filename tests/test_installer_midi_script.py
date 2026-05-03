@@ -99,3 +99,42 @@ def test_version_stamp_written(tmp_path: Path) -> None:
 def test_env_var_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("FLSTUDIO_MCP_HARDWARE_DIR", str(tmp_path))
     assert midi_script.hardware_dir() == tmp_path
+
+
+def test_install_creates_runtime_dirs(tmp_path: Path) -> None:
+    """FL sandbox can't makedirs under ~/Documents — installer must do it."""
+    hw_dir = tmp_path / "Hardware"
+    hw_dir.mkdir()
+    result = midi_script.install_midi_script(hardware_dir_path=hw_dir)
+
+    runtime_root = hw_dir / midi_script.RUNTIME_SUBDIR
+    for leaf in midi_script.RUNTIME_LEAF_DIRS:
+        assert (runtime_root / leaf).is_dir(), f"missing {leaf}"
+    assert len(result.runtime_dirs) == len(midi_script.RUNTIME_LEAF_DIRS)
+
+
+def test_install_runtime_dirs_are_idempotent(tmp_path: Path) -> None:
+    hw_dir = tmp_path / "Hardware"
+    hw_dir.mkdir()
+    midi_script.install_midi_script(hardware_dir_path=hw_dir)
+    # Drop a sentinel inside inbox/ — ensure second install doesn't wipe it
+    sentinel = hw_dir / midi_script.RUNTIME_SUBDIR / "inbox" / ".sentinel"
+    sentinel.write_text("keep me", encoding="utf-8")
+
+    midi_script.install_midi_script(hardware_dir_path=hw_dir)
+    assert sentinel.read_text(encoding="utf-8") == "keep me"
+
+
+def test_runtime_dirs_reported_on_noop(tmp_path: Path) -> None:
+    hw_dir = tmp_path / "Hardware"
+    hw_dir.mkdir()
+    midi_script.install_midi_script(hardware_dir_path=hw_dir)
+    second = midi_script.install_midi_script(hardware_dir_path=hw_dir)
+    assert second.action == midi_script.InstallAction.NOOP
+    assert len(second.runtime_dirs) == len(midi_script.RUNTIME_LEAF_DIRS)
+
+
+def test_ensure_runtime_dirs_returns_paths(tmp_path: Path) -> None:
+    out = midi_script.ensure_runtime_dirs(tmp_path)
+    assert all(p.is_dir() for p in out)
+    assert {p.name for p in out} == set(midi_script.RUNTIME_LEAF_DIRS)

@@ -31,6 +31,13 @@ SCRIPT_FILENAME = "device_flstudio_mcp.py"
 VERSION_STAMP_SUFFIX = ".version.json"
 PACKAGE_DATA = "flstudio_mcp.fl_script"
 
+# Runtime IPC directory layout. Must match re_harness.ipc.DEFAULT_RUNTIME_ROOT.
+# Pre-created here because FL Studio's sandboxed Python cannot makedirs
+# fresh subdirs under ~/Documents/... — the in-FL script's own
+# _ensure_dirs() silently fails otherwise on first launch.
+RUNTIME_SUBDIR = Path("flpdiff-harness") / "runtime"
+RUNTIME_LEAF_DIRS = ("inbox", "outbox", "processed")
+
 _LOG = get_logger("installer.midi_script")
 
 
@@ -50,6 +57,7 @@ class InstallResult:
     bundled_hash: str
     installed_hash: str | None
     used_symlink: bool
+    runtime_dirs: tuple[Path, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -58,6 +66,7 @@ class InstallResult:
             "bundled_hash": self.bundled_hash,
             "installed_hash": self.installed_hash,
             "used_symlink": self.used_symlink,
+            "runtime_dirs": [str(p) for p in self.runtime_dirs],
         }
 
 
@@ -108,6 +117,23 @@ def _write_version_stamp(target: Path, *, bundled_hash: str, used_symlink: bool)
     )
 
 
+def ensure_runtime_dirs(hardware_dir_path: Path) -> tuple[Path, ...]:
+    """Pre-create the IPC runtime dirs that FL's sandboxed Python can't.
+
+    FL Studio's embedded Python cannot ``os.makedirs`` fresh subdirs
+    under ``~/Documents/...``, so the in-FL script's own
+    ``_ensure_dirs()`` silently fails on first launch. We create them
+    here from the (unsandboxed) MCP install process.
+    """
+    runtime_root = hardware_dir_path / RUNTIME_SUBDIR
+    created: list[Path] = []
+    for leaf in RUNTIME_LEAF_DIRS:
+        leaf_dir = runtime_root / leaf
+        leaf_dir.mkdir(parents=True, exist_ok=True)
+        created.append(leaf_dir)
+    return tuple(created)
+
+
 def install_midi_script(
     *,
     hardware_dir_path: Path | None = None,
@@ -150,6 +176,8 @@ def install_midi_script(
             )
         hw_dir.mkdir(parents=True, exist_ok=True)
 
+    runtime_dirs = ensure_runtime_dirs(hw_dir)
+
     target = hw_dir / SCRIPT_FILENAME
     bundled_hash = file_sha256(bundled)
     installed_hash = _hash_or_none(target)
@@ -165,6 +193,7 @@ def install_midi_script(
             bundled_hash=bundled_hash,
             installed_hash=installed_hash,
             used_symlink=target.is_symlink(),
+            runtime_dirs=runtime_dirs,
         )
 
     action = (
@@ -204,6 +233,7 @@ def install_midi_script(
         bundled_hash=bundled_hash,
         installed_hash=installed_hash,
         used_symlink=used_symlink,
+        runtime_dirs=runtime_dirs,
     )
 
 
