@@ -36,8 +36,18 @@ The Inspector opens at `http://localhost:5173`.
 | `live_execute` `kind: install_script` | no | Re-run MIDI script installer (covers all FL versions) |
 | `live_execute` `kind: enable_iac` | no | Best-effort UI-scripting flip |
 | `live_execute` `kind: verify_setup` | partial | End-to-end chain check; reports IAC + script + FL + IPC. Run this first when something's wrong. |
-| `live_execute` `kind: describe` | yes | Project state from running FL |
+| `live_execute` `kind: describe` | yes | Project state from running FL (path resolved via window-title fallback on FL 2025) |
 | `live_execute` `kind: get_tempo` | yes | Tempo readback |
+| `live_execute` `kind: set_tempo` | yes | Mutation — `args: {bpm: 145}`. Auto-snapshots first. |
+| `live_execute` `kind: set_channel_name` | yes | `args: {iid: 0, name: "Kick"}`. iid is **0-based**. |
+| `live_execute` `kind: set_insert_volume` | yes | `args: {idx: 1, value: 0.7}`. idx **0 = Master**. |
+| `live_execute` `kind: set_pattern_name` | yes | `args: {iid: 1, name: "Verse"}`. iid is **1-based** (FL pattern numbering). |
+| `live_execute` `kind: set_time_signature` | yes | `args: {num: 7, beat: 8}` |
+| `live_execute` `kind: set_plugin_param` | yes | `args: {index: 0, param: 0, value: 0.5, scope: "channel"}` |
+| `live_execute` `kind: set_mixer_eq` | yes | `args: {idx: 1, band: 0, gain: 0.0}`. band 0=low, 1=mid, 2=high. |
+| `live_execute` `kind: save` | yes | Triggers FL save (no auto-snapshot — save IS the write). |
+| `live_execute` `kind: get_plugin_info` | yes | `args: {index: 0, scope: "channel"}` |
+| `live_execute` `kind: restore_snapshot` | partial | `args: {snapshot_id: "..."}`. Requires FL to release file (close project). Use `snapshots://recent` to list ids. |
 
 The `logs://recent` resource returns the last 50 structured log entries —
 useful for seeing the full lifecycle of a tool call (begin / ok / error).
