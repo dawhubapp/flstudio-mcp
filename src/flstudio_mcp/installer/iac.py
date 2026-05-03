@@ -5,27 +5,44 @@ by macOS's Audio MIDI Setup app — specifically the **IAC Driver**. If
 the IAC bus is offline, FL never loads the MIDI script and every
 ``live_execute`` call hangs.
 
-This module:
+Detection (best-effort, no extra deps):
 
-* :func:`check_iac_status` — reads ``system_profiler
-  SPMIDIAccessoryDataType -json`` and reports whether the IAC Driver is
-  present and online. Pure read — no side effects.
-* :func:`enable_iac_via_ui_scripting` — AppleScript that opens Audio
-  MIDI Setup, double-clicks the IAC row, and toggles ``Device is
-  online``. Best-effort — UI scripting breaks across macOS versions.
+1. **CoreMIDI count** — ``MIDIGetNumberOfDestinations`` /
+   ``MIDIGetNumberOfSources`` via ctypes. Reliable across macOS
+   versions. Counts > 0 indicate at least one MIDI endpoint is
+   currently online.
+2. **IAC plugin file presence** —
+   ``/System/Library/Extensions/AppleMIDIIACDriver.plugin`` exists on
+   every modern macOS install. Distinguishes NOT_INSTALLED (rare) from
+   OFFLINE.
+3. **Legacy fallback** — ``system_profiler SPMIDIAccessoryDataType
+   -json``. Modern macOS returns an empty array even when IAC is
+   present + online, so this is only useful on older systems and as a
+   last resort.
 
-Detection is reliable; auto-enable is not. Callers should always fall
-back to surfacing :data:`IAC_DRIVER_OFFLINE_ERROR` with the AMS
-deeplink so the user can flip the toggle by hand.
+Caveat: the count probe can't distinguish IAC ports from hardware MIDI
+endpoints. If a user has only a hardware MIDI device connected and IAC
+is offline, this detector reports ONLINE (false positive). In practice
+nearly every macOS without explicit hardware MIDI shows endpoints only
+when IAC is online, so the heuristic is good enough for v0.1. CoreMIDI
+name enumeration via ctypes / JXA was tried and segfaults on macOS 14;
+revisit once a stable bridge exists.
+
+Auto-enable drives Audio MIDI Setup via osascript — fragile across
+macOS versions but worth attempting before falling back to the
+``IAC_DRIVER_OFFLINE`` error + manual instructions.
 """
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
 import json
 import shutil
 import subprocess
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from ..logging_setup import get_logger
 
@@ -36,16 +53,19 @@ SYSTEM_PROFILER_DATA_TYPE = "SPMIDIAccessoryDataType"
 SYSTEM_PROFILER_TIMEOUT_S = 10.0
 OSASCRIPT_TIMEOUT_S = 20.0
 
+# IAC Driver kernel extension — present on every modern macOS install.
+IAC_PLUGIN_PATH = Path("/System/Library/Extensions/AppleMIDIIACDriver.plugin")
+
 _LOG = get_logger("installer.iac")
 
 
 class IacState(StrEnum):
     """High-level IAC status values."""
 
-    ONLINE = "online"  # IAC Driver present and online — ready to use
-    OFFLINE = "offline"  # IAC Driver present but disabled
-    NOT_INSTALLED = "not_installed"  # no IAC Driver entry at all
-    UNKNOWN = "unknown"  # detection failed (system_profiler missing, parse error, etc.)
+    ONLINE = "online"
+    OFFLINE = "offline"
+    NOT_INSTALLED = "not_installed"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -67,8 +87,31 @@ class IacStatus:
 
 
 # --------------------------------------------------------------------------- #
-# Detection
+# Primary detection: CoreMIDI endpoint count via ctypes
 # --------------------------------------------------------------------------- #
+
+
+def _coremidi_endpoint_counts() -> tuple[int, int] | None:
+    """Return ``(destinations, sources)`` from CoreMIDI, or ``None`` on failure."""
+    path = ctypes.util.find_library("CoreMIDI")
+    if not path:
+        return None
+    try:
+        lib = ctypes.cdll.LoadLibrary(path)
+        lib.MIDIGetNumberOfDestinations.restype = ctypes.c_uint32
+        lib.MIDIGetNumberOfSources.restype = ctypes.c_uint32
+        return int(lib.MIDIGetNumberOfDestinations()), int(lib.MIDIGetNumberOfSources())
+    except OSError:
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# Secondary detection: IAC plugin presence + legacy system_profiler
+# --------------------------------------------------------------------------- #
+
+
+def _iac_plugin_installed(plugin_path: Path | None = None) -> bool:
+    return (plugin_path or IAC_PLUGIN_PATH).exists()
 
 
 def _run_system_profiler() -> str:
@@ -89,22 +132,6 @@ def _run_system_profiler() -> str:
 
 
 def _extract_iac_entries(report: dict) -> list[dict]:
-    """Walk the system_profiler JSON to find IAC Driver entries.
-
-    The schema is roughly::
-
-        {
-          "SPMIDIAccessoryDataType": [
-            {"_name": "...", ..., "_items": [
-                {"_name": "IAC Driver", "online_state": "midi_state_online", ...}
-            ]}
-          ]
-        }
-
-    The exact shape varies across macOS versions, so the walk is
-    tolerant: any nested dict whose ``_name`` matches IAC Driver
-    counts.
-    """
     found: list[dict] = []
     todo: list = [report]
     while todo:
@@ -120,38 +147,94 @@ def _extract_iac_entries(report: dict) -> list[dict]:
 
 
 def _entry_is_online(entry: dict) -> bool:
-    """Return True if the entry's online_state field reports online."""
     state = str(entry.get("online_state", "")).lower()
     if "online" in state and "offline" not in state:
         return True
-    legacy = str(entry.get("midi_state", "")).lower()
-    return legacy == "online"
+    return str(entry.get("midi_state", "")).lower() == "online"
+
+
+def _system_profiler_status() -> IacStatus | None:
+    """Legacy detection. Returns ``None`` when system_profiler reports nothing
+    useful (modern macOS), so callers can fall through to other heuristics."""
+    try:
+        raw = _run_system_profiler()
+    except (FileNotFoundError, subprocess.TimeoutExpired, RuntimeError, OSError):
+        return None
+    try:
+        report = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    entries = _extract_iac_entries(report)
+    if not entries:
+        return None
+    if any(_entry_is_online(e) for e in entries):
+        return IacStatus(
+            IacState.ONLINE, "system_profiler reports IAC online", {"entries": entries}
+        )
+    return IacStatus(IacState.OFFLINE, "system_profiler reports IAC offline", {"entries": entries})
+
+
+# --------------------------------------------------------------------------- #
+# Public detection
+# --------------------------------------------------------------------------- #
 
 
 def check_iac_status() -> IacStatus:
-    """Return the current IAC Driver state. Read-only, ~80ms."""
-    try:
-        raw = _run_system_profiler()
-    except FileNotFoundError:
-        return IacStatus(IacState.UNKNOWN, "system_profiler binary not found")
-    except subprocess.TimeoutExpired:
-        return IacStatus(IacState.UNKNOWN, "system_profiler timed out")
-    except Exception as exc:
-        return IacStatus(IacState.UNKNOWN, f"system_profiler error: {exc}")
+    """Return the current IAC Driver state.
 
-    try:
-        report = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return IacStatus(IacState.UNKNOWN, f"system_profiler returned non-JSON: {exc}")
+    Combines three signals:
+      1. CoreMIDI endpoint counts (most reliable cross-version probe).
+      2. IAC plugin file presence.
+      3. system_profiler (legacy / older macOS).
 
-    entries = _extract_iac_entries(report)
-    if not entries:
-        return IacStatus(IacState.NOT_INSTALLED, "no IAC Driver entry in MIDI report")
+    See module docstring for the false-positive caveat (hardware MIDI
+    devices are indistinguishable from IAC at the count level).
+    """
+    counts = _coremidi_endpoint_counts()
+    plugin_installed = _iac_plugin_installed()
 
-    online = any(_entry_is_online(e) for e in entries)
-    if online:
-        return IacStatus(IacState.ONLINE, "", {"entries": entries})
-    return IacStatus(IacState.OFFLINE, "IAC Driver present but disabled", {"entries": entries})
+    if counts is not None:
+        dest, src = counts
+        any_endpoint = (dest + src) > 0
+        raw = {"dest_count": dest, "src_count": src, "plugin_installed": plugin_installed}
+
+        if any_endpoint and plugin_installed:
+            return IacStatus(
+                IacState.ONLINE,
+                f"CoreMIDI sees {dest} destination(s) + {src} source(s); IAC plugin present",
+                raw,
+            )
+        if any_endpoint and not plugin_installed:
+            # MIDI endpoints exist but IAC plugin missing — rare; treat as not installed
+            return IacStatus(
+                IacState.NOT_INSTALLED,
+                "MIDI endpoints exist but IAC plugin is missing",
+                raw,
+            )
+        if not any_endpoint and plugin_installed:
+            return IacStatus(
+                IacState.OFFLINE,
+                "IAC plugin installed but no MIDI endpoints active",
+                raw,
+            )
+        return IacStatus(
+            IacState.NOT_INSTALLED,
+            "No MIDI endpoints and IAC plugin missing",
+            raw,
+        )
+
+    fallback = _system_profiler_status()
+    if fallback is not None:
+        return fallback
+    if plugin_installed:
+        return IacStatus(
+            IacState.UNKNOWN,
+            "CoreMIDI not reachable; IAC plugin present, online state unknown",
+        )
+    return IacStatus(
+        IacState.NOT_INSTALLED,
+        "CoreMIDI not reachable and IAC plugin missing",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -164,14 +247,11 @@ tell application "Audio MIDI Setup" to activate
 delay 0.5
 tell application "System Events"
     tell process "Audio MIDI Setup"
-        -- Open MIDI Studio window (Window menu)
         try
             click menu item "Show MIDI Studio" of menu "Window" of menu bar 1
         on error
-            -- already open or differently named in this OS version
         end try
         delay 0.5
-        -- Activate the IAC Driver row + open its Inspector
         try
             tell window 1
                 tell scroll area 1
@@ -181,15 +261,12 @@ tell application "System Events"
                 end tell
             end tell
         on error
-            -- Older layout: some versions render IAC as a button in a toolbar
         end try
         delay 0.3
-        -- Toggle "Device is online" via the Edit menu shortcut, if present.
         try
             click menu item "Show Info" of menu "View" of menu bar 1
         end try
         delay 0.3
-        -- Final toggle: cmd-shift-O is the historic "online toggle" hotkey.
         try
             keystroke "o" using {command down, shift down}
         end try
@@ -214,9 +291,7 @@ def _run_osascript(script: str) -> tuple[int, str, str]:
 def enable_iac_via_ui_scripting() -> IacStatus:
     """Attempt to flip IAC online by driving Audio MIDI Setup via AppleScript.
 
-    Best-effort. Returns the post-attempt :class:`IacStatus` — caller
-    should still check ``.ok`` and surface :data:`IAC_DRIVER_OFFLINE_ERROR`
-    if it's still offline.
+    Best-effort. Returns the post-attempt :class:`IacStatus`.
     """
     try:
         rc, _stdout, stderr = _run_osascript(_ENABLE_IAC_APPLESCRIPT)
