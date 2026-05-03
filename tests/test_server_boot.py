@@ -23,7 +23,7 @@ def test_auto_install_returns_result(_isolate_hardware_dir: Path) -> None:
     result = server.auto_install_midi_script()
     assert result is not None
     assert result.action == midi.InstallAction.INSTALLED
-    assert result.target_path.parent == _isolate_hardware_dir
+    assert result.target_path.parent == _isolate_hardware_dir / midi.SCRIPT_SUBDIR
 
 
 def test_auto_install_noop_after_first_run(_isolate_hardware_dir: Path) -> None:
@@ -44,7 +44,9 @@ def test_auto_install_disabled_via_env(
 def test_install_result_extends_instructions(_isolate_hardware_dir: Path) -> None:
     result = server.auto_install_midi_script()
     instance = server.build_server(install_result=result)
-    assert "Reload the device" in (instance.instructions or "")
+    text = instance.instructions or ""
+    assert "Update MIDI scripts" in text
+    assert "flstudio-mcp" in text
 
 
 def test_noop_does_not_extend_instructions(_isolate_hardware_dir: Path) -> None:

@@ -27,6 +27,10 @@ from ..logging_setup import get_logger
 DEFAULT_FL_HARDWARE_DIR = (
     Path.home() / "Documents" / "Image-Line" / "FL Studio" / "Settings" / "Hardware"
 )
+# FL Studio scans `Settings/Hardware/<subdir>/device_*.py` — scripts at
+# the Hardware/ root are NOT discovered. The subdir name doesn't have
+# to match the script name but using the same name keeps things sane.
+SCRIPT_SUBDIR = "flstudio-mcp"
 SCRIPT_FILENAME = "device_flstudio_mcp.py"
 VERSION_STAMP_SUFFIX = ".version.json"
 PACKAGE_DATA = "flstudio_mcp.fl_script"
@@ -169,7 +173,7 @@ def install_midi_script(
             )
             return InstallResult(
                 action=InstallAction.HARDWARE_DIR_MISSING,
-                target_path=hw_dir / SCRIPT_FILENAME,
+                target_path=hw_dir / SCRIPT_SUBDIR / SCRIPT_FILENAME,
                 bundled_hash=file_sha256(bundled),
                 installed_hash=None,
                 used_symlink=False,
@@ -178,7 +182,9 @@ def install_midi_script(
 
     runtime_dirs = ensure_runtime_dirs(hw_dir)
 
-    target = hw_dir / SCRIPT_FILENAME
+    script_dir = hw_dir / SCRIPT_SUBDIR
+    script_dir.mkdir(parents=True, exist_ok=True)
+    target = script_dir / SCRIPT_FILENAME
     bundled_hash = file_sha256(bundled)
     installed_hash = _hash_or_none(target)
 

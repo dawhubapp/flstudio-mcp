@@ -26,6 +26,17 @@ def test_install_when_target_missing(tmp_path: Path) -> None:
     assert result.bundled_hash == midi_script.file_sha256(midi_script.bundled_script_path())
 
 
+def test_install_uses_subfolder_for_fl_discovery(tmp_path: Path) -> None:
+    """FL Studio scans Hardware/<subdir>/device_*.py — root .py files are ignored."""
+    hw_dir = tmp_path / "Hardware"
+    hw_dir.mkdir()
+    result = midi_script.install_midi_script(hardware_dir_path=hw_dir)
+    assert result.target_path.parent.name == midi_script.SCRIPT_SUBDIR
+    assert result.target_path == hw_dir / midi_script.SCRIPT_SUBDIR / midi_script.SCRIPT_FILENAME
+    # Root must NOT contain the script directly
+    assert not (hw_dir / midi_script.SCRIPT_FILENAME).exists()
+
+
 def test_noop_when_already_up_to_date(tmp_path: Path) -> None:
     hw_dir = tmp_path / "Hardware"
     hw_dir.mkdir()
@@ -37,8 +48,9 @@ def test_noop_when_already_up_to_date(tmp_path: Path) -> None:
 def test_update_when_hash_differs(tmp_path: Path) -> None:
     hw_dir = tmp_path / "Hardware"
     hw_dir.mkdir()
-    target = hw_dir / midi_script.SCRIPT_FILENAME
-    target.write_text("# stale", encoding="utf-8")
+    script_dir = hw_dir / midi_script.SCRIPT_SUBDIR
+    script_dir.mkdir()
+    (script_dir / midi_script.SCRIPT_FILENAME).write_text("# stale", encoding="utf-8")
     result = midi_script.install_midi_script(hardware_dir_path=hw_dir)
     assert result.action == midi_script.InstallAction.UPDATED
     assert result.installed_hash is not None

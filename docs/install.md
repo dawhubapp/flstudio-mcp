@@ -70,7 +70,9 @@ The auto-installer (or `live_execute(kind="install_script")`) does three
 things:
 
 1. Copies `device_flstudio_mcp.py` into
-   `~/Documents/Image-Line/FL Studio/Settings/Hardware/`.
+   `~/Documents/Image-Line/FL Studio/Settings/Hardware/flstudio-mcp/`
+   (subfolder — FL only scans `Hardware/<subdir>/device_*.py`, never
+   `.py` files at the Hardware/ root).
 2. Pre-creates the IPC runtime dirs
    (`flpdiff-harness/runtime/{inbox,outbox,processed}`) — required
    because FL's sandboxed Python can't create them itself.
@@ -78,13 +80,16 @@ things:
 
 **You still have to wire the script inside FL once:**
 
-1. **Restart FL Studio** (or, if FL was already running, click
-   **Reload script** in MIDI Settings).
-2. Open **Options → MIDI Settings** (`F10`).
+1. Open **Options → MIDI Settings** (`F10`).
+2. Click **Update MIDI scripts** (bottom of dialog) — this rescans the
+   Hardware/ tree and adds `flstudio-mcp` to the Controller type
+   dropdown. *(If FL was launched before the install, this step is
+   required even after restart.)*
 3. In the **Input** list, highlight **`IAC Driver Bus 1`**.
 4. Click **Enable**.
-5. Set **Controller type** to **`flstudio-mcp`** (this matches the
-   `# name=flstudio-mcp` line at the top of the bundled script).
+5. Open the **Controller type** dropdown → under **Scripts**, pick
+   **`flstudio-mcp`** (matches the `# name=flstudio-mcp` header at the
+   top of the bundled script).
 6. Optionally set **Port** to any number (1 is fine).
 7. Close the dialog.
 
@@ -162,6 +167,7 @@ The `logs://recent` MCP resource returns the last 50 entries.
 |---------|--------------|-----|
 | `IAC_DRIVER_OFFLINE` | IAC bus disabled in Audio MIDI Setup | Section 3.b |
 | `HARDWARE_DIR_MISSING` install action | FL Studio 25.x not installed | Install FL Studio |
-| Server hangs on `live_execute(kind="describe")` | FL closed, or MIDI script not reloaded, or IAC input not enabled | Restart FL or click Reload script; verify Section 3.a steps 2–6 |
+| Server hangs on `live_execute(kind="describe")` | FL closed, or script not loaded, or IAC input not enabled | Click Update MIDI scripts; verify Section 3.a steps 2–6 |
 | FL Script output doesn't show `[flstudio-mcp] started ...` | Controller type not set to `flstudio-mcp`, or IAC input not enabled | Re-do Section 3.a steps 3–5 |
+| `flstudio-mcp` missing from Controller type dropdown | FL hasn't rescanned Hardware/ since install | Click **Update MIDI scripts** in MIDI Settings |
 | Auto-enable IAC silently no-ops | Accessibility permission missing | System Settings → Privacy & Security → Accessibility → enable for terminal/IDE |

@@ -150,7 +150,7 @@ def test_install_script_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     env = live_tool.execute("install_script", None, runtime=rt)
     assert env["ok"] is True
     assert env["result"]["action"] == "installed"
-    assert (hw / "device_flstudio_mcp.py").exists()
+    assert (hw / "flstudio-mcp" / "device_flstudio_mcp.py").exists()
     assert rt.sent == []  # local op only
 
 

@@ -53,7 +53,8 @@ def auto_install_midi_script() -> midi_script_installer.InstallResult | None:
     if result.action != midi_script_installer.InstallAction.NOOP:
         print(
             f"flstudio-mcp: MIDI script {result.action.value} → {result.target_path}. "
-            "Reload the device in FL Studio (Options → MIDI Settings → Refresh).",
+            "In FL Studio: Options → MIDI Settings → click 'Update MIDI scripts', "
+            "then set the IAC Driver Bus 1 input's Controller type to 'flstudio-mcp'.",
             file=sys.stderr,
         )
     return result
@@ -90,7 +91,8 @@ def _compose_instructions(
         )
     return (
         base + f"\n\nNOTE: the bundled MIDI script was just {install_result.action.value} "
-        f"into FL Studio. Reload the device in FL (Options → MIDI Settings → Refresh) "
+        f"into FL Studio. In FL: Options → MIDI Settings → click 'Update MIDI scripts', "
+        "then set the IAC Driver Bus 1 input's Controller type to 'flstudio-mcp' "
         "before calling live_execute."
     )
 
