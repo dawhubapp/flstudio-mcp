@@ -197,7 +197,9 @@ def test_invalid_args_short_circuits_before_snapshot(runtime, store) -> None:
     assert store.list_snapshots() == []  # no snapshot
 
 
-def test_unsaved_project_returns_snapshot_failed(tmp_path: Path, store) -> None:
+def test_unsaved_project_returns_snapshot_failed(
+    tmp_path: Path, store, monkeypatch: pytest.MonkeyPatch
+) -> None:
     payload = json.dumps(
         {
             "tempo": 130000.0,
@@ -207,6 +209,9 @@ def test_unsaved_project_returns_snapshot_failed(tmp_path: Path, store) -> None:
         }
     )
     rt = FakeRuntime(describe_payload=payload)
+    # Disable AppleScript fallback so test stays hermetic (otherwise it
+    # finds the developer's real FL window on macOS)
+    monkeypatch.setattr(state, "resolve_flp_path_from_fl_window", lambda: None)
     with pytest.raises(ToolError) as exc:
         _mutations.execute_mutation("set_tempo", {"bpm": 130}, runtime=rt, snapshot_store=store)
     assert exc.value.code == ErrorCode.SNAPSHOT_FAILED

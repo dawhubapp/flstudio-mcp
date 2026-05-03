@@ -5,6 +5,12 @@ project state, parses the JSON result, and caches it to
 ``~/Library/Application Support/flstudio-mcp/state.json``. Future tool
 calls can read the cache without round-tripping to FL.
 
+FL 2025 API gap: ``general.getCurrentFilename()`` doesn't exist on this
+build. When describe returns ``flp_path == None`` we fall back to:
+  1. AppleScript: read FL's main-window title (always contains the
+     project filename, e.g. ``my-track.flp - FL Studio 2025``).
+  2. ``mdfind`` (Spotlight): locate the full path by filename.
+
 When an explicit ``path`` is supplied, it overrides the cached value
 and is recorded as the resolved project (per decision #13 — auto-detect
 with explicit override).
@@ -13,6 +19,8 @@ with explicit override).
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
@@ -146,8 +154,92 @@ def load_cached_state(*, state_dir: Path | None = None) -> ProjectState | None:
     )
 
 
+_WINDOW_TITLE_APPLESCRIPT = (
+    r'tell application "System Events" to tell process "OsxFL" to get title of window 1'
+)
+_FL_TITLE_FILENAME_RE = re.compile(r"([^/\\]+\.flp)\b", re.IGNORECASE)
+_OSASCRIPT_TIMEOUT_S = 5.0
+_MDFIND_TIMEOUT_S = 5.0
+
+
+def _read_fl_window_title() -> str | None:
+    """Return FL's main-window title (e.g. ``track.flp - FL Studio 2025``)."""
+    try:
+        proc = subprocess.run(
+            ["osascript", "-e", _WINDOW_TITLE_APPLESCRIPT],
+            capture_output=True,
+            text=True,
+            timeout=_OSASCRIPT_TIMEOUT_S,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    title = proc.stdout.strip()
+    return title or None
+
+
+def _resolve_flp_filename_via_mdfind(filename: str) -> str | None:
+    """Find a full path for ``filename`` via Spotlight; prefer most recently used."""
+    try:
+        proc = subprocess.run(
+            ["mdfind", f"kMDItemFSName == '{filename}'"],
+            capture_output=True,
+            text=True,
+            timeout=_MDFIND_TIMEOUT_S,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    candidates = [Path(p) for p in proc.stdout.splitlines() if p.strip()]
+    if not candidates:
+        return None
+    # Prefer most recently modified (= most likely the one open in FL)
+    existing = [p for p in candidates if p.is_file()]
+    if not existing:
+        return None
+    existing.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return str(existing[0])
+
+
+def resolve_flp_path_from_fl_window() -> str | None:
+    """Best-effort FL project path from window title + Spotlight.
+
+    Workaround for FL 2025's missing ``general.getCurrentFilename()``.
+    Returns the absolute path or ``None`` on failure.
+    """
+    title = _read_fl_window_title()
+    if not title:
+        _LOG.info("fl window title empty / unreachable")
+        return None
+    match = _FL_TITLE_FILENAME_RE.search(title)
+    if not match:
+        _LOG.info("fl window title has no .flp filename", extra={"title": title})
+        return None
+    fl_filename = match.group(1).lstrip("*").rstrip("*").strip()
+    full = _resolve_flp_filename_via_mdfind(fl_filename)
+    if full:
+        _LOG.info(
+            "resolved flp_path via window title + mdfind",
+            extra={"fl_filename": fl_filename, "path": full},
+        )
+    else:
+        _LOG.info(
+            "window title has filename but mdfind couldn't locate it",
+            extra={"fl_filename": fl_filename},
+        )
+    return full
+
+
 def describe_active_project(runtime, *, state_dir: Path | None = None) -> ProjectState:
-    """Send ``describe`` to FL, parse, cache, return."""
+    """Send ``describe`` to FL, parse, cache, return.
+
+    If the parsed state has no ``flp_path`` (FL API doesn't expose it on
+    this build), try the AppleScript-window-title fallback.
+    """
     result = runtime.send("describe")
     if getattr(result, "status", None) != "ok":
         raise RuntimeError(
@@ -155,6 +247,20 @@ def describe_active_project(runtime, *, state_dir: Path | None = None) -> Projec
             f"detail={getattr(result, 'detail', '')[:200]!r}"
         )
     state = parse_describe_payload(getattr(result, "detail", "") or "")
+    if not state.flp_path:
+        fallback = resolve_flp_path_from_fl_window()
+        if fallback:
+            state = ProjectState(
+                flp_path=fallback,
+                project_title=state.project_title or Path(fallback).stem,
+                tempo_bpm=state.tempo_bpm,
+                channel_count=state.channel_count,
+                pattern_count=state.pattern_count,
+                insert_count=state.insert_count,
+                api_version=state.api_version,
+                cached_at=state.cached_at,
+                raw=state.raw,
+            )
     cache_state(state, state_dir=state_dir)
     return state
 

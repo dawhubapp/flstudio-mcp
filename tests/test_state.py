@@ -128,3 +128,77 @@ def test_resolve_active_project_with_path_override(tmp_path: Path) -> None:
     assert s.flp_path == "/explicit.flp"
     cached = state.load_cached_state(state_dir=tmp_path)
     assert cached is not None and cached.flp_path == "/explicit.flp"
+
+
+def test_describe_uses_window_title_fallback_when_flp_path_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FL 2025 API gap: getCurrentFilename() doesn't exist; fallback resolves via window."""
+    payload = _describe_detail(flp_path="ERR:no such attribute", project_title="ERR:also missing")
+    rt = FakeRuntime(detail=payload)
+    fallback_path = "/Users/me/Documents/Image-Line/FL Studio/Projects/track.flp"
+    monkeypatch.setattr(state, "resolve_flp_path_from_fl_window", lambda: fallback_path)
+    s = state.describe_active_project(rt, state_dir=tmp_path)
+    assert s.flp_path == fallback_path
+    # project_title was None (from ERR:); falls back to filename stem
+    assert s.project_title == "track"
+
+
+def test_describe_keeps_real_project_title_when_using_path_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _describe_detail(flp_path="ERR:no", project_title="My Track")
+    rt = FakeRuntime(detail=payload)
+    monkeypatch.setattr(state, "resolve_flp_path_from_fl_window", lambda: "/some/track.flp")
+    s = state.describe_active_project(rt, state_dir=tmp_path)
+    assert s.project_title == "My Track"  # don't overwrite real title
+
+
+def test_describe_skips_fallback_when_flp_path_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rt = FakeRuntime(detail=_describe_detail(flp_path="/from-fl.flp"))
+    monkeypatch.setattr(
+        state,
+        "resolve_flp_path_from_fl_window",
+        lambda: pytest.fail("fallback should not run"),
+    )
+    s = state.describe_active_project(rt, state_dir=tmp_path)
+    assert s.flp_path == "/from-fl.flp"
+
+
+def test_resolve_flp_path_from_fl_window_no_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(state, "_read_fl_window_title", lambda: None)
+    assert state.resolve_flp_path_from_fl_window() is None
+
+
+def test_resolve_flp_path_from_fl_window_no_flp_in_title(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(state, "_read_fl_window_title", lambda: "FL Studio 2025")
+    assert state.resolve_flp_path_from_fl_window() is None
+
+
+def test_resolve_flp_path_from_fl_window_uses_mdfind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    real = tmp_path / "track.flp"
+    real.write_bytes(b"FLhd")
+    monkeypatch.setattr(state, "_read_fl_window_title", lambda: "track.flp - FL Studio 2025")
+    monkeypatch.setattr(state, "_resolve_flp_filename_via_mdfind", lambda fn: str(real))
+    assert state.resolve_flp_path_from_fl_window() == str(real)
+
+
+def test_resolve_flp_path_strips_modified_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[str] = []
+
+    def fake_mdfind(filename: str) -> str | None:
+        captured.append(filename)
+        return None
+
+    monkeypatch.setattr(state, "_read_fl_window_title", lambda: "*track.flp - FL Studio 2025")
+    monkeypatch.setattr(state, "_resolve_flp_filename_via_mdfind", fake_mdfind)
+    state.resolve_flp_path_from_fl_window()
+    assert captured == ["track.flp"]
