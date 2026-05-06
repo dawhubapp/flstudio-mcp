@@ -83,6 +83,7 @@ async def test_reorganize(
                 model=case.model,
                 system_prompt=system_prompt,
                 max_iterations=case.max_iterations,
+                max_input_tokens=case.max_input_tokens,
             ),
             client=anthropic_client,
             tool_filter=lambda tools: [t for t in tools if t["name"] == "offline_execute"],
@@ -131,10 +132,13 @@ async def test_reorganize(
     )
     print(invariants.summary())
 
-    assert run.terminated in {
-        "end_turn",
-        "iter_cap",
-    }, f"agent terminated={run.terminated} (likely infra failure)"
+    # token_cap and iter_cap are *controlled* outcomes — the agent
+    # may have done all the meaningful work before hitting the cap.
+    # We score state, not transcript shape, so any terminated reason
+    # other than a true infra failure ("exception") gets graded.
+    assert (
+        run.terminated != "exception"
+    ), f"agent terminated={run.terminated}: {run.final_text[:300]} (infra failure)"
     assert invariants.passed_hard, f"hard invariants failed:\n{invariants.summary()}"
     assert judge is not None, f"judge call failed: {judge_error}"
     assert judge.grade >= case.min_grade, (
