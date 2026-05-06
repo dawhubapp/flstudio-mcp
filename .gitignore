@@ -24,3 +24,4 @@ dist/
 # Local snapshots / state written at runtime
 ~/Library/Application Support/flstudio-mcp/
 /.env
+.tmp_proto/
