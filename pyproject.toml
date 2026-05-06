@@ -51,6 +51,13 @@ dev = [
     "ruff>=0.6",
     "pre-commit>=3.6",
 ]
+# E2E LLM-driven test harness. Drives a Claude API tool-use loop against the
+# MCP server over real stdio + grades the result with invariants + a Claude
+# judge. Pulled in only when running `make e2e-*` targets — see
+# tests/e2e/README.md.
+eval = [
+    "anthropic>=0.40",
+]
 
 [project.scripts]
 flstudio-mcp = "flstudio_mcp.server:main"
@@ -96,4 +103,5 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "integration: live integration tests requiring FL Studio (set FLSTUDIO_MCP_INTEGRATION=1 to run)",
+    "e2e: end-to-end LLM agent-loop tests (set FLSTUDIO_MCP_E2E=1 + ANTHROPIC_API_KEY to run)",
 ]
