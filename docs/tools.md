@@ -256,7 +256,7 @@ Each write envelope embeds `snapshot_id` in `result` for
   one of `to_track_index` / `to_position_ticks` required.
 
 ### Atomic Ableton-style reorganize (playlist-only)
-- **`reorganize_project(path, arrangement?, add_family_separators?, preserve_existing_track_names?, dry_run?)`** —
+- **`reorganize_project(path, arrangement?, add_family_separators?, dry_run?)`** —
   one-shot deterministic cleanup of an arrangement's playlist tracks.
   **Never touches channels, mixer inserts, or patterns** — those carry
   intentional engineering (channel→insert routing, parallel chains,
@@ -270,15 +270,16 @@ Each write envelope embeds `snapshot_id` in `result` for
   Vocal → Other — sorted by min(channel iid) within each family.
   Insert empty `[Family]` separator tracks between blocks. Move every
   clip to its lane's target track via `move_clip` (bulk-deduped per
-  source-track + ref). Set track name + palette color.
+  source-track + ref). Set track name + palette color. **Tracks within
+  the generated layout are always renamed to match the new content** —
+  preserving an old user name on a track that now carries different
+  content would be misleading. Tracks beyond the layout range stay
+  default-named.
 
   Args:
   - `arrangement` (default 0) — which arrangement to reorganize
   - `add_family_separators` (default true) — emit `[Drums]`,
     `[Bass]`, … empty tracks between family blocks
-  - `preserve_existing_track_names` (default true) — keep existing
-    non-default track names (only color + group flag get applied to
-    those rows)
   - `dry_run` (default false) — return plan without writing
 
   Result includes `mutations_applied` + the full plan (`tracks[]`

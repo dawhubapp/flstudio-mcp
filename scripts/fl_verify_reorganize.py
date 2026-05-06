@@ -173,6 +173,12 @@ def main() -> int:
     # the macOS→Wine bridge — see open_view_playlist docstring).
     open_view_playlist()
     time.sleep(2.0)
+    # 5b. Maximize the playlist window. With the playlist focused
+    # (which View→Playlist does), Enter toggles it to fullscreen
+    # within FL — actually visible, not crammed behind the mixer.
+    force_osxfl_frontmost()
+    applescript('tell application "System Events" to keystroke return')
+    time.sleep(2.0)
     p2 = screencapture(out, "02-playlist")
     print(f"  {p2.name}")
 
