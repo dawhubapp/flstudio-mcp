@@ -328,11 +328,143 @@ def _flpdiff_clean(ctx: InvariantContext) -> InvariantResult:
     )
 
 
+def _channels_untouched(ctx: InvariantContext) -> InvariantResult:
+    """No channel name / color / routing changed before↔after.
+
+    v2 reorganize is playlist-only: it must leave the channel rack
+    byte-identical. Compares against `describe.channels[]` since list_*
+    omits routing.
+    """
+    before = ctx.before.describe.get("channels") or []
+    after = ctx.after.describe.get("channels") or []
+    if len(before) != len(after):
+        return InvariantResult(
+            passed=False,
+            detail=f"channel count changed ({len(before)} → {len(after)})",
+        )
+    diffs: list[str] = []
+    for b, a in zip(before, after, strict=False):
+        for fld in ("iid", "name", "color", "target_insert", "sample_path"):
+            if b.get(fld) != a.get(fld):
+                diffs.append(f"iid={b.get('iid')}.{fld}: {b.get(fld)!r} → {a.get(fld)!r}")
+                break
+    if diffs:
+        return InvariantResult(
+            passed=False,
+            detail=f"{len(diffs)} channel(s) modified: {diffs[:3]}",
+            remediation="reorganize must not mutate channels",
+        )
+    return InvariantResult(passed=True, detail=f"all {len(before)} channels byte-identical")
+
+
+def _inserts_untouched(ctx: InvariantContext) -> InvariantResult:
+    """No mixer insert name / color changed before↔after.
+
+    Bridge surfaces inserts as ``describe.mixer.inserts[]``; we extract
+    the same list from before/after.
+    """
+
+    def _inserts_of(d: dict) -> list:
+        mix = d.get("mixer")
+        if isinstance(mix, dict):
+            ins = mix.get("inserts")
+            if isinstance(ins, list):
+                return ins
+        ins = d.get("inserts")
+        return ins if isinstance(ins, list) else []
+
+    before = _inserts_of(ctx.before.describe)
+    after = _inserts_of(ctx.after.describe)
+    if len(before) != len(after):
+        return InvariantResult(
+            passed=False,
+            detail=f"insert count changed ({len(before)} → {len(after)})",
+        )
+    diffs: list[str] = []
+    for b, a in zip(before, after, strict=False):
+        for fld in ("name", "color"):
+            if b.get(fld) != a.get(fld):
+                diffs.append(f"idx={b.get('index')}.{fld}")
+                break
+    if diffs:
+        return InvariantResult(
+            passed=False,
+            detail=f"{len(diffs)} insert(s) modified: {diffs[:3]}",
+            remediation="reorganize must not mutate mixer",
+        )
+    return InvariantResult(passed=True, detail=f"all {len(before)} inserts byte-identical")
+
+
+def _patterns_untouched(ctx: InvariantContext) -> InvariantResult:
+    """No pattern name / color changed before↔after (notes/length covered separately)."""
+    before = ctx.before.describe.get("patterns") or []
+    after = ctx.after.describe.get("patterns") or []
+    if len(before) != len(after):
+        return InvariantResult(
+            passed=False,
+            detail=f"pattern count changed ({len(before)} → {len(after)})",
+        )
+    diffs: list[str] = []
+    for b, a in zip(before, after, strict=False):
+        for fld in ("iid", "id", "name", "color"):
+            if b.get(fld) != a.get(fld):
+                diffs.append(f"iid={b.get('iid', b.get('id'))}.{fld}")
+                break
+    if diffs:
+        return InvariantResult(
+            passed=False,
+            detail=f"{len(diffs)} pattern(s) modified: {diffs[:3]}",
+            remediation="reorganize must not mutate patterns",
+        )
+    return InvariantResult(passed=True, detail=f"all {len(before)} patterns byte-identical")
+
+
+def _tracks_named_per_family(ctx: InvariantContext) -> InvariantResult:
+    """At least one named playlist track exists in the after-state.
+
+    Soft check — when there are no clips, no tracks need naming, so
+    an empty after.tracks is also a pass.
+    """
+    after_tracks = ctx.after.tracks
+    after_clips = ctx.after.clips
+    if not after_clips:
+        return InvariantResult(passed=True, detail="no clips → no tracks expected to be named")
+    palette_rgb = {(g["rgb_r"], g["rgb_g"], g["rgb_b"]) for g in _PALETTE_RGBS}
+    named_count = 0
+    palette_count = 0
+    for tr in after_tracks:
+        name = (tr.get("name") or "").strip()
+        if name:
+            named_count += 1
+        c = _color_int(tr.get("color"))
+        if c is not None:
+            rgb = ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF)
+            if rgb in palette_rgb:
+                palette_count += 1
+    if named_count == 0:
+        return InvariantResult(
+            passed=False,
+            detail="no playlist tracks were named after reorganize",
+            remediation="reorganize must produce at least one named track when clips exist",
+        )
+    return InvariantResult(
+        passed=True,
+        detail=f"{named_count} named track(s), {palette_count} palette-colored",
+    )
+
+
+_PALETTE_RGBS = [
+    {"rgb_r": (v >> 16) & 0xFF, "rgb_g": (v >> 8) & 0xFF, "rgb_b": v & 0xFF}
+    for v in PALETTE_RGB_VALUES
+]
+
+
 REORGANIZE_INVARIANTS: list[Invariant] = [
-    Invariant("semantic_names", "hard", _semantic_names),
-    Invariant("distinct_non_master_routing", "hard", _routing_distinct_non_master),
-    Invariant("palette_colors", "soft", _palette_colors),
+    Invariant("channels_untouched", "hard", _channels_untouched),
+    Invariant("inserts_untouched", "hard", _inserts_untouched),
+    Invariant("patterns_untouched", "hard", _patterns_untouched),
     Invariant("clips_preserved", "hard", _clips_preserved),
     Invariant("notes_preserved", "hard", _notes_preserved),
+    Invariant("tracks_named_per_family", "soft", _tracks_named_per_family),
     Invariant("flpdiff_clean", "hard", _flpdiff_clean),
 ]

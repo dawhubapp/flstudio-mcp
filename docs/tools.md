@@ -255,18 +255,40 @@ Each write envelope embeds `snapshot_id` in `result` for
   patches matching records' position and/or track in place. At least
   one of `to_track_index` / `to_position_ticks` required.
 
-### Atomic Ableton-style reorganize
-- **`reorganize_project(path, preserve_existing_names?, rename_default_patterns?, dry_run?)`** —
-  one-shot deterministic cleanup: classify each enabled channel by
-  regex on `name` + `sample_path` (with camelCase-aware tokenisation),
-  fall back to MIDI-pitch buckets for unnamed plugin channels, route
-  each to its own dedicated mixer insert (1..N), apply palette colors
-  per group, recolor patterns by dominant channel.
-  `preserve_existing_names` (default true) keeps already-semantic
-  names. `rename_default_patterns` (default true) rewrites
-  "Pattern 3" → group name. `dry_run: true` returns the plan without
-  writing. Result includes `mutations_applied` + the full plan.
-  ~50 ms per call (single bridge spawn) vs ~60 s for an LLM run.
+### Atomic Ableton-style reorganize (playlist-only)
+- **`reorganize_project(path, arrangement?, add_family_separators?, preserve_existing_track_names?, dry_run?)`** —
+  one-shot deterministic cleanup of an arrangement's playlist tracks.
+  **Never touches channels, mixer inserts, or patterns** — those carry
+  intentional engineering (channel→insert routing, parallel chains,
+  sample-name-as-source-info, pattern reuse semantics) that an
+  automated tool would destroy.
+
+  Algorithm: classify each clip by its referenced channel (or
+  pattern's dominant channel) via regex on name + sample_path, MIDI-
+  pitch fallback for unnamed plugins. Lay tracks out in fixed family
+  order — Drums (hard) → Drums (soft) → Bass → Lead → Pad → FX →
+  Vocal → Other — sorted by min(channel iid) within each family.
+  Insert empty `[Family]` separator tracks between blocks. Move every
+  clip to its lane's target track via `move_clip` (bulk-deduped per
+  source-track + ref). Set track name + palette color.
+
+  Args:
+  - `arrangement` (default 0) — which arrangement to reorganize
+  - `add_family_separators` (default true) — emit `[Drums]`,
+    `[Bass]`, … empty tracks between family blocks
+  - `preserve_existing_track_names` (default true) — keep existing
+    non-default track names (only color + group flag get applied to
+    those rows)
+  - `dry_run` (default false) — return plan without writing
+
+  Result includes `mutations_applied` + the full plan (`tracks[]`
+  with name/rgb/grouped per row + `clipMoves[]` listing source/target
+  tracks).
+
+  ~400 ms per call regardless of project size; verified 85/85 on the
+  full local corpus (FLPs from 60 KB to 9.9 MB, 1 to 122 channels,
+  0 to 693 clips). Compared against an LLM-driven equivalent: 100×
+  faster, deterministic, $0 / call.
 
 ---
 

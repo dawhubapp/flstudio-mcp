@@ -274,8 +274,51 @@ def test_predicate_exception_surfaced_as_soft_fail() -> None:
 
 
 def test_invariant_report_summary_format() -> None:
-    state = _state(channels=[{"name": "Sample 1"}])  # default-named — fail
-    report = run_invariants([REORGANIZE_INVARIANTS[0]], _ctx(state, state))
+    # channels_untouched fails when describe.channels differs before↔after.
+    before = _state()
+    after = _state()
+    before.describe = {"channels": [{"iid": 1, "name": "Kick"}]}
+    after.describe = {"channels": [{"iid": 1, "name": "Renamed"}]}
+    report = run_invariants([REORGANIZE_INVARIANTS[0]], _ctx(before, after))
     summary = report.summary()
     assert "FAIL" in summary
-    assert "semantic_names" in summary
+    assert "channels_untouched" in summary
+
+
+def test_channels_untouched_pass_when_identical() -> None:
+    state = _state()
+    state.describe = {"channels": [{"iid": 0, "name": "Kick", "color": 0xFF0000}]}
+    from ..harness.invariants import _channels_untouched
+
+    res = _channels_untouched(_ctx(state, state))
+    assert res.passed is True
+
+
+def test_channels_untouched_fail_on_color_change() -> None:
+    before = _state()
+    after = _state()
+    before.describe = {"channels": [{"iid": 0, "name": "Kick", "color": 0xFF0000}]}
+    after.describe = {"channels": [{"iid": 0, "name": "Kick", "color": 0x00FF00}]}
+    from ..harness.invariants import _channels_untouched
+
+    res = _channels_untouched(_ctx(before, after))
+    assert res.passed is False
+    assert "color" in res.detail
+
+
+def test_patterns_untouched_pass_when_identical() -> None:
+    state = _state()
+    state.describe = {"patterns": [{"iid": 1, "name": "Verse"}]}
+    from ..harness.invariants import _patterns_untouched
+
+    res = _patterns_untouched(_ctx(state, state))
+    assert res.passed is True
+
+
+def test_inserts_untouched_pass_when_identical() -> None:
+    state = _state()
+    state.describe = {"inserts": [{"index": 1, "name": "Drum Bus"}]}
+    from ..harness.invariants import _inserts_untouched
+
+    res = _inserts_untouched(_ctx(state, state))
+    assert res.passed is True
