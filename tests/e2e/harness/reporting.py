@@ -60,7 +60,8 @@ def _flpdiff_info(flp_path: Path, *, flpdiff_cmd: list[str]) -> dict[str, Any] |
 
 
 def _flpdiff_diff(before: Path, after: Path, *, flpdiff_cmd: list[str]) -> str:
-    cmd = [*flpdiff_cmd, "diff", str(before), str(after), "--verbose"]
+    # flpdiff CLI takes two FLP paths positionally; no diff subcommand.
+    cmd = [*flpdiff_cmd, "--verbose", str(before), str(after)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
     except FileNotFoundError:

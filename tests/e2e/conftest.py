@@ -11,6 +11,10 @@ Two gates:
 
 Self-tests in ``tests/e2e/unit/`` run unconditionally so any harness
 regression is caught in normal CI.
+
+We auto-load ``mcp/.env`` at session start (no python-dotenv dep —
+stdlib only) so a developer can drop ``ANTHROPIC_API_KEY=…`` in that
+gitignored file and not have to ``export`` it every shell.
 """
 
 from __future__ import annotations
@@ -22,6 +26,31 @@ import pytest
 
 E2E_GATE_ENV = "FLSTUDIO_MCP_E2E"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
+
+DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"  # mcp/.env
+
+
+def _load_dotenv(path: Path) -> None:
+    """Populate ``os.environ`` from ``path`` for keys not already set.
+
+    Honors ``KEY=value`` lines; strips surrounding single/double quotes;
+    ignores blanks and ``#``-prefixed comments. Existing env wins (so a
+    real ``export`` in the shell overrides ``.env``).
+    """
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(DOTENV_PATH)
 
 
 @pytest.fixture

@@ -105,6 +105,11 @@ PALETTE: dict[str, int] = {
     "vocal": 0xFFFACC15,
 }
 PALETTE_VALUES: set[int] = set(PALETTE.values())
+# Bridge writes 0xAARRGGBB but ``list_*`` reads back with alpha=0 in
+# the {r,g,b,a} dict shape (FL stores user colors with alpha bit
+# unset). Compare on the lower 24 bits so palette membership matches
+# the bridge round-trip rather than the ideal-world canonical form.
+PALETTE_RGB_VALUES: set[int] = {v & 0x00FFFFFF for v in PALETTE_VALUES}
 
 
 def _color_int(value: object) -> int | None:
@@ -167,18 +172,36 @@ def _semantic_names(ctx: InvariantContext) -> InvariantResult:
 
 
 def _routing_distinct_non_master(ctx: InvariantContext) -> InvariantResult:
-    """Every active channel routed to a non-Master insert; routings distinct."""
+    """Every active channel routed to a non-Master insert; routings distinct.
+
+    The bridge's ``list_channels`` summary omits routing; the
+    ``describe`` payload's ``channels[].target_insert`` is the
+    authoritative source.
+    """
     routes: list[tuple[int, int]] = []  # (channel_iid, target_insert)
+    describe_channels = ctx.after.describe.get("channels") or []
+    by_iid = {c.get("iid"): c for c in describe_channels if isinstance(c, dict)}
     for ch in ctx.after.channels:
         if not ch.get("enabled", True):
             continue
-        target = ch.get("routing")
-        if isinstance(target, dict):
-            target = target.get("target_insert", target.get("target"))
-        if target is None:
-            target = ch.get("target_insert")
         iid = ch.get("iid", ch.get("id"))
-        if isinstance(target, int) and isinstance(iid, int):
+        target: int | None = None
+        # 1. Authoritative: describe.channels[iid].target_insert.
+        full = by_iid.get(iid, {})
+        if isinstance(full.get("target_insert"), int):
+            target = full["target_insert"]
+        # 2. Fallback: list_channels-shaped {iid, routing|target_insert}.
+        if target is None and isinstance(ch.get("target_insert"), int):
+            target = ch["target_insert"]
+        if target is None:
+            r = ch.get("routing")
+            if isinstance(r, int):
+                target = r
+            elif isinstance(r, dict):
+                inner = r.get("target_insert", r.get("target"))
+                if isinstance(inner, int):
+                    target = inner
+        if target is not None and isinstance(iid, int):
             routes.append((iid, target))
 
     if not routes:
@@ -220,7 +243,7 @@ def _palette_colors(ctx: InvariantContext) -> InvariantResult:
             color = _color_int(obj.get("color"))
             if color is None or color == 0:
                 continue
-            if color not in PALETTE_VALUES:
+            if (color & 0x00FFFFFF) not in PALETTE_RGB_VALUES:
                 off_palette.append((kind, color))
     if not off_palette:
         return InvariantResult(passed=True, detail="all set colors drawn from palette")
@@ -278,8 +301,11 @@ def _notes_preserved(ctx: InvariantContext) -> InvariantResult:
 
 
 def _flpdiff_clean(ctx: InvariantContext) -> InvariantResult:
-    """flpdiff diff before after exits 0 or 1 (never 2 = parse error)."""
-    cmd = [*ctx.flpdiff_cmd, "diff", str(ctx.before_path), str(ctx.after_path)]
+    """flpdiff <A> <B> exits 0 or 1 (never 2 = parse error).
+
+    The CLI takes two paths positionally with no subcommand for diff.
+    """
+    cmd = [*ctx.flpdiff_cmd, str(ctx.before_path), str(ctx.after_path)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
     except FileNotFoundError:
