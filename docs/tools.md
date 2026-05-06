@@ -255,6 +255,19 @@ Each write envelope embeds `snapshot_id` in `result` for
   patches matching records' position and/or track in place. At least
   one of `to_track_index` / `to_position_ticks` required.
 
+### Atomic Ableton-style reorganize
+- **`reorganize_project(path, preserve_existing_names?, rename_default_patterns?, dry_run?)`** —
+  one-shot deterministic cleanup: classify each enabled channel by
+  regex on `name` + `sample_path` (with camelCase-aware tokenisation),
+  fall back to MIDI-pitch buckets for unnamed plugin channels, route
+  each to its own dedicated mixer insert (1..N), apply palette colors
+  per group, recolor patterns by dominant channel.
+  `preserve_existing_names` (default true) keeps already-semantic
+  names. `rename_default_patterns` (default true) rewrites
+  "Pattern 3" → group name. `dry_run: true` returns the plan without
+  writing. Result includes `mutations_applied` + the full plan.
+  ~50 ms per call (single bridge spawn) vs ~60 s for an LLM run.
+
 ---
 
 # Examples

@@ -72,6 +72,8 @@ OfflineKind = Literal[
     "add_clip",
     "remove_clip",
     "move_clip",
+    # Code-level Ableton-style reorganize (no LLM required)
+    "reorganize_project",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -101,6 +103,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "add_clip",
     "remove_clip",
     "move_clip",
+    "reorganize_project",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -121,6 +124,7 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "add_clip",
         "remove_clip",
         "move_clip",
+        "reorganize_project",
     }
 )
 TOOL_NAME = "offline_execute"
