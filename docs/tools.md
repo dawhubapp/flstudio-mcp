@@ -291,6 +291,21 @@ Each write envelope embeds `snapshot_id` in `result` for
   0 to 693 clips). Compared against an LLM-driven equivalent: 100×
   faster, deterministic, $0 / call.
 
+  **v3 (2026-05-07)** adds automation→target nesting: automation
+  channels whose target is a regular channel (decoded from opcode
+  `0xE3`, RemoteController) become `grouped=true` children of their
+  target's track. The automation lane inherits the target's family
+  classification, so e.g. a `"Sytrus Pad - Filter 3 - Cutoff freq"`
+  auto whose target is a bass channel lands in the `[Bass]` block
+  (not `[Pad]`, despite the auto's own name). Mixer-slot
+  automations (target encoded as a slot-pair, not a channel iid)
+  stay as standalone rows in their own family — RE'ing the slot-
+  pair encoding is deferred. Verified visually in FL on
+  `test_track_color=…;automations=link_3.flp` (fold-arrow next to
+  the auto track in Playlist sidebar) and byte-level on
+  `NewStuff.flp` (1.2 MB, 144 channels, 19 linkable autos: 173
+  tracks, 18 grouped, 5 family separators, 34 ms).
+
 ---
 
 # Examples
