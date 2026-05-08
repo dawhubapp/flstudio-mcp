@@ -74,6 +74,10 @@ OfflineKind = Literal[
     "move_clip",
     # Code-level Ableton-style reorganize (no LLM required)
     "reorganize_project",
+    # Epic 5 / F2.1 — pattern notes (0xE0)
+    "add_pattern_note",
+    "set_pattern_notes",
+    "remove_pattern_note",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -104,6 +108,9 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "remove_clip",
     "move_clip",
     "reorganize_project",
+    "add_pattern_note",
+    "set_pattern_notes",
+    "remove_pattern_note",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -125,6 +132,9 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "remove_clip",
         "move_clip",
         "reorganize_project",
+        "add_pattern_note",
+        "set_pattern_notes",
+        "remove_pattern_note",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -377,6 +387,10 @@ def register(
             "  - set_channel_name(path, iid, name): rename channel by 0-based iid.\n"
             "  - set_insert_name(path, index, name): rename mixer insert (0=master).\n"
             "  - set_time_signature(path, numerator, denominator): set project time sig.\n"
+            "  - add_pattern_note(path, pattern_id, position, channel_iid, length, key, ...): append a note to a pattern. position+length in PPQ ticks; key 0..131 (60=C5).\n"
+            "  - set_pattern_notes(path, pattern_id, notes): replace every note on a pattern with the given list. Empty list clears all notes.\n"
+            "  - remove_pattern_note(path, pattern_id, index): drop the note at the given 0-based index in stream order.\n"
+            "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"
             "\n"
