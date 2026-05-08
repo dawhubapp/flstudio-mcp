@@ -78,6 +78,10 @@ OfflineKind = Literal[
     "add_pattern_note",
     "set_pattern_notes",
     "remove_pattern_note",
+    # Epic 5 / F2.2 — pattern controllers (0xDF)
+    "add_pattern_controller",
+    "set_pattern_controllers",
+    "remove_pattern_controller",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -111,6 +115,9 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "add_pattern_note",
     "set_pattern_notes",
     "remove_pattern_note",
+    "add_pattern_controller",
+    "set_pattern_controllers",
+    "remove_pattern_controller",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -135,6 +142,9 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "add_pattern_note",
         "set_pattern_notes",
         "remove_pattern_note",
+        "add_pattern_controller",
+        "set_pattern_controllers",
+        "remove_pattern_controller",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -390,6 +400,9 @@ def register(
             "  - add_pattern_note(path, pattern_id, position, channel_iid, length, key, ...): append a note to a pattern. position+length in PPQ ticks; key 0..131 (60=C5).\n"
             "  - set_pattern_notes(path, pattern_id, notes): replace every note on a pattern with the given list. Empty list clears all notes.\n"
             "  - remove_pattern_note(path, pattern_id, index): drop the note at the given 0-based index in stream order.\n"
+            "  - add_pattern_controller(path, pattern_id, position, channel, value, flags?): add a keyframe-automation controller (0xDF) — position in PPQ ticks, value as float32.\n"
+            "  - set_pattern_controllers(path, pattern_id, controllers): replace all controller events on the pattern.\n"
+            "  - remove_pattern_controller(path, pattern_id, index): drop the controller at the given 0-based index.\n"
             "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"
