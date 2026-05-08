@@ -234,6 +234,50 @@ Each write envelope embeds `snapshot_id` in `result` for
   full event subtree (notes, controllers, color, length, looped, name).
   New id = `max(existing) + 1`. Default name `"Pattern N copy"`.
 
+### Pattern notes (Epic 5 / F2.1, opcode `0xE0`, 24-byte records)
+
+Inverse of the parser's `decodeNotes`. Encoder writes byte-exact records
+that re-parse identical. Verified end-to-end (FL load → piano roll →
+File→Save → re-parse): all note fields survive a full FL round-trip.
+
+- **`add_pattern_note(path, pattern_id, position, channel_iid, length, key, ...)`** —
+  append one note to a pattern's `0xE0` blob. Required: `position` and
+  `length` in PPQ ticks (read `metadata.ppq` from `describe`),
+  `channel_iid` (cross-references `channels[].iid`), `key` (FL MIDI
+  range `[0, 131]`; `60` = C5 in FL's numbering). Optional with
+  defaults: `velocity` (100), `pan` (64=center), `fine_pitch` (120
+  =neutral), `release` (64), `midi_channel` (0), `mod_x` (128),
+  `mod_y` (128), `group` (0=ungrouped), `flags` (0). `slide: bool`
+  toggles flag bit `0x08` (slide note). Existing notes in the pattern
+  are preserved (encoder coalesces all notes into a single rewritten
+  `0xE0`). `INVALID_ARGS` on out-of-range fields,
+  `EVENT_NOT_FOUND` on unknown `pattern_id`.
+- **`set_pattern_notes(path, pattern_id, notes)`** — replace every
+  note on the pattern with the given list. `notes` is a JSON array of
+  note objects (same fields as `add_pattern_note`). Empty array clears
+  every `0xE0` event from the pattern's scope. Useful when the LLM
+  wants to write a melody fresh rather than incrementally append.
+- **`remove_pattern_note(path, pattern_id, index)`** — drop the note
+  at the given 0-based index in stream order. `INVALID_ARGS` on
+  out-of-range index.
+
+### Pattern controllers (Epic 5 / F2.2, opcode `0xDF`, 12-byte records)
+
+Inverse of `decodeControllers`. Pattern-scoped keyframe-automation
+points: each record carries `(position, channel, value, flags)`. Used
+by FL's "event editor" view in the piano roll.
+
+- **`add_pattern_controller(path, pattern_id, position, channel, value, flags?)`** —
+  append one controller event. `position` in PPQ ticks (u32),
+  `channel` is a u8 (0..255), `value` is a float32, `flags` is a u8
+  (default 0). `INVALID_ARGS` on out-of-range or non-finite value.
+- **`set_pattern_controllers(path, pattern_id, controllers)`** —
+  replace every controller record on the pattern. `controllers` is a
+  JSON array of `{position, channel, value, flags?}` objects. Empty
+  array drops every `0xDF` event in the pattern's scope.
+- **`remove_pattern_controller(path, pattern_id, index)`** — drop the
+  controller at the given 0-based index in stream order.
+
 ### Arrangements + tracks
 - **`set_arrangement_name(path, id: int (default 0), name)`** — replaces `0xF1` blob.
 - **`set_track_name(path, arrangement: int (default 0), track: int, name)`** —
