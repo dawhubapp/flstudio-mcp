@@ -278,6 +278,35 @@ by FL's "event editor" view in the piano roll.
 - **`remove_pattern_controller(path, pattern_id, index)`** — drop the
   controller at the given 0-based index in stream order.
 
+### Pattern + channel creation (Epic 5 / F2.3)
+
+Create brand-new empty patterns and channels for the LLM to populate
+via `add_pattern_note` / `set_pattern_notes` / `set_channel_color`
+etc. Both helpers insert just before the first `0x63` (arrangement
+opener) and round-trip clean through serialize→parse.
+
+- **`create_pattern(path, name?)`** — emits the minimum on-disk
+  shape `[0x41 newId u16, 0xC1 name blob]`. Returns
+  `{path, bytes_written, pattern_id}` where `pattern_id =
+  max(existing) + 1` (never reused, so deletions leave gaps and the
+  next created pattern continues from the high-water mark). FL fills
+  in defaults for length / color / looped / notes / controllers on
+  read. `name` defaults to empty string.
+- **`create_channel(path, name?, kind?)`** — emits `[0x40 newIid
+  u16, 0x15 kindByte u8, 0xCB name blob]`. `kind` defaults to
+  `"sampler"` (FL's built-in sampler renders fine with no plugin
+  attached); other accepted values are `"instrument"` (kindByte=2,
+  also writes an empty `0xC9` plugin-internal-name slot),
+  `"layer"` (3), `"automation"` (5). Returns `{path, bytes_written,
+  channel_iid}` where `channel_iid = max(existing) + 1`. The legacy
+  `header.n_channels` u16 is intentionally NOT bumped — modern FL
+  always writes 0 there and derives the real count from the event
+  stream.
+
+Typical chain (LLM-friendly): `create_pattern("verse2")` →
+`create_channel("BassSynth", "instrument")` →
+`add_pattern_note(pattern_id=NEW, channel_iid=NEW, …)`.
+
 ### Arrangements + tracks
 - **`set_arrangement_name(path, id: int (default 0), name)`** — replaces `0xF1` blob.
 - **`set_track_name(path, arrangement: int (default 0), track: int, name)`** —
