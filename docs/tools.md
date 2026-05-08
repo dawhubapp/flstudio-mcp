@@ -307,6 +307,36 @@ Typical chain (LLM-friendly): `create_pattern("verse2")` →
 `create_channel("BassSynth", "instrument")` →
 `add_pattern_note(pattern_id=NEW, channel_iid=NEW, …)`.
 
+### Native plugin params (Epic 5 / F2.4)
+
+Patch a single parameter inside a native FL plugin's `0xD5` state
+blob. v0.1 supports **Fruity Parametric EQ 2 only** — both name
+variants (`Fruity Parametric EQ 2` and FL 25.2.4's lowercase
+`Fruity parametric EQ 2`). Other native plugins reject with
+`UNSUPPORTED_PLUGIN`. **VST plugins are out of scope** — their state
+blobs embed session-internal data that drifts across same-value
+saves; use the live MIDI-script path (`live_execute(set_plugin_param)`)
+instead.
+
+- **`set_native_plugin_param(path, scope, param, value, …)`** —
+  byte-patches one parameter slot.
+  - `scope`: `"channel"` (with `channel_iid`) OR `"mixer_slot"` (with
+    `insert_index` + `slot_index`). Insert 0 is Master.
+  - `param`: `"main_level"` (uint16 LE at byte 0x90) OR `"band"`
+    (with `band: 1..7` + `field: "level" | "freq" | "width"`).
+  - `value`: normalized `0.0..1.0`, stored as `round(v * 0xFFFF)`.
+    Out-of-range or non-finite values are rejected with
+    `INVALID_ARGS`.
+  - `EVENT_NOT_FOUND` if the scope has no `0xD5` event.
+  - `UNSUPPORTED_PLUGIN` if the plugin name isn't in the registry, or
+    the blob size is outside `[0x92, 500]` bytes (handles FL
+    25.2.4's 354-byte and older FL saves' 350-byte EQ 2 blobs;
+    rejects unrelated blobs that happen to live in the same scope).
+
+  Type/order band fields (uint8 enums 0..7) are NOT supported in
+  v0.1 — a normalized 0..1 mapping is lossy. Future API may add an
+  enum-value variant.
+
 ### Arrangements + tracks
 - **`set_arrangement_name(path, id: int (default 0), name)`** — replaces `0xF1` blob.
 - **`set_track_name(path, arrangement: int (default 0), track: int, name)`** —
