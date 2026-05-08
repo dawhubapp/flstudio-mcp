@@ -82,6 +82,9 @@ OfflineKind = Literal[
     "add_pattern_controller",
     "set_pattern_controllers",
     "remove_pattern_controller",
+    # Epic 5 / F2.3 — pattern + channel creation
+    "create_pattern",
+    "create_channel",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -118,6 +121,8 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "add_pattern_controller",
     "set_pattern_controllers",
     "remove_pattern_controller",
+    "create_pattern",
+    "create_channel",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -145,6 +150,8 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "add_pattern_controller",
         "set_pattern_controllers",
         "remove_pattern_controller",
+        "create_pattern",
+        "create_channel",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -403,6 +410,8 @@ def register(
             "  - add_pattern_controller(path, pattern_id, position, channel, value, flags?): add a keyframe-automation controller (0xDF) — position in PPQ ticks, value as float32.\n"
             "  - set_pattern_controllers(path, pattern_id, controllers): replace all controller events on the pattern.\n"
             "  - remove_pattern_controller(path, pattern_id, index): drop the controller at the given 0-based index.\n"
+            "  - create_pattern(path, name?): create a new empty pattern; returns {pattern_id} = max(existing) + 1.\n"
+            "  - create_channel(path, name?, kind?): create a new empty channel; kind defaults to 'sampler' (also: instrument, automation, layer); returns {channel_iid} = max(existing) + 1.\n"
             "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"
