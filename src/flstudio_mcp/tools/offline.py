@@ -85,6 +85,8 @@ OfflineKind = Literal[
     # Epic 5 / F2.3 — pattern + channel creation
     "create_pattern",
     "create_channel",
+    # Epic 5 / F2.4 — native plugin params (Fruity Parametric EQ 2 prototype)
+    "set_native_plugin_param",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -123,6 +125,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "remove_pattern_controller",
     "create_pattern",
     "create_channel",
+    "set_native_plugin_param",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -152,6 +155,7 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "remove_pattern_controller",
         "create_pattern",
         "create_channel",
+        "set_native_plugin_param",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -412,6 +416,7 @@ def register(
             "  - remove_pattern_controller(path, pattern_id, index): drop the controller at the given 0-based index.\n"
             "  - create_pattern(path, name?): create a new empty pattern; returns {pattern_id} = max(existing) + 1.\n"
             "  - create_channel(path, name?, kind?): create a new empty channel; kind defaults to 'sampler' (also: instrument, automation, layer); returns {channel_iid} = max(existing) + 1.\n"
+            "  - set_native_plugin_param(path, scope, param, value, ...): patch one parameter of a native FL plugin's 0xD5 state blob. v0.1 supports Fruity Parametric EQ 2 only; other native plugins reject with UNSUPPORTED_PLUGIN. scope='channel' or 'mixer_slot'; param='main_level' or 'band' (with band=1..7, field='level'|'freq'|'width'); value is normalized 0..1.\n"
             "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"
