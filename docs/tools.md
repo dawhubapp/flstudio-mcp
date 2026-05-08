@@ -337,6 +337,23 @@ instead.
   v0.1 — a normalized 0..1 mapping is lossy. Future API may add an
   enum-value variant.
 
+  **Generic param refs (other native plugins):** the same kind also
+  accepts `param: "param"` with `param_index: int` for any plugin
+  registered in `PLUGIN_PARAM_LAYOUTS`. The index maps to FL's
+  `plugins.setParamValue(value, paramIndex, ...)` numbering.
+
+  **Adding more native plugins:** see
+  `flpdiff/docs/fl-format/plugin-layout-registry.md`. The
+  `python/tools/re_harness/sweep_plugin_layout.py` auto-sweep tool
+  RE's a plugin's layout in <1 min by driving FL via IPC. Top
+  corpus-frequency native plugins pending: Fruity Reeverb 2 (225
+  instances), Fruity Limiter (174), Maximus (88), Soundgoodizer (88),
+  Fruity Balance (82), Fruity PanOMatic (70), Fruity Filter (60).
+
+  **VSTs:** explicitly out of scope — their state blobs drift across
+  same-value saves. Use `live_execute(kind="set_plugin_param")` for
+  Serum, Sylenth1, Massive, FabFilter, etc. (D-54).
+
 ### Arrangements + tracks
 - **`set_arrangement_name(path, id: int (default 0), name)`** — replaces `0xF1` blob.
 - **`set_track_name(path, arrangement: int (default 0), track: int, name)`** —
