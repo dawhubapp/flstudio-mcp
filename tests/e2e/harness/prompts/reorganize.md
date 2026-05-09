@@ -14,6 +14,13 @@ field-specific args.
 `list_patterns`, `list_arrangements`, `list_tracks`, `list_clips`,
 `list_plugins`, `list_apis`.
 
+**Discovery shortcuts** (cheaper than walking `list_*`):
+- `find_channel_by_name(path, query, fuzzy?)` — substring match
+- `find_insert_by_name(path, query, fuzzy?)`
+- `find_pattern_by_name(path, query, fuzzy?)`
+- `find_plugin_instances(path, plugin_name)` — every instance of a
+  plugin (channel + mixer scopes)
+
 **Mutation kinds you will need:**
 
 - `set_channel_name(path, iid, name)`

@@ -49,6 +49,11 @@ OfflineKind = Literal[
     "list_tracks",
     "list_clips",
     "list_apis",
+    # Epic 6 / F6.3 — smart discovery (token-saving fuzzy lookups)
+    "find_channel_by_name",
+    "find_insert_by_name",
+    "find_pattern_by_name",
+    "find_plugin_instances",
     # Phase 3.2 write kinds
     "set_tempo",
     "set_pattern_name",
@@ -110,6 +115,10 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "list_tracks",
     "list_clips",
     "list_apis",
+    "find_channel_by_name",
+    "find_insert_by_name",
+    "find_pattern_by_name",
+    "find_plugin_instances",
     "set_tempo",
     "set_pattern_name",
     "set_channel_name",
@@ -430,6 +439,10 @@ def register(
             "  - list_patterns(path): pattern summaries.\n"
             "  - list_plugins(path): flat list of plugins (channel + mixer scopes).\n"
             "  - list_apis: enumerate kinds.\n"
+            "  - find_channel_by_name(path, query, fuzzy?): substring search by channel name (default fuzzy=true). Returns [{iid, name, kind}].\n"
+            "  - find_insert_by_name(path, query, fuzzy?): substring search by mixer insert name. Returns [{index, name}].\n"
+            "  - find_pattern_by_name(path, query, fuzzy?): substring search by pattern name. Returns [{id, name, notes}].\n"
+            "  - find_plugin_instances(path, plugin_name): locate every instance of a plugin (channel + mixer scopes). Returns [{scope, channel_index|insert_index+slot_index, name}].\n"
             "\n"
             "Mutation kinds (auto-snapshot before write; result includes snapshot_id):\n"
             "  - set_tempo(path, bpm): replace the modern 0x9C tempo event.\n"

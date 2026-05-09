@@ -9,6 +9,13 @@ Every kind takes `args = {"path": "<path>", ...}`.
 `list_patterns`, `list_arrangements`, `list_tracks`, `list_clips`,
 `list_plugins`, `list_apis`.
 
+**Discovery shortcuts (prefer over walking `list_*`):**
+- `find_channel_by_name(path, query, fuzzy?)` — substring match
+- `find_insert_by_name(path, query, fuzzy?)`
+- `find_pattern_by_name(path, query, fuzzy?)`
+- `find_plugin_instances(path, plugin_name)` — every instance of a
+  plugin (channel + mixer scopes)
+
 **Mutation kinds you will need:**
 
 - `create_channel(path, name?, kind?)` — kind defaults to `sampler`.
