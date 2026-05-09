@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..harness.invariants_song import PluginParamExpectation
+from ..harness.invariants_song import ChannelLevelExpectation, PluginParamExpectation
 
 CORPUS_DIR = Path(__file__).resolve().parents[4] / "flpdiff" / "tests" / "corpus"
 
@@ -38,6 +38,7 @@ class FullSongCase:
     expect_new_pattern: bool = False
     expect_new_channel: bool = False
     expect_plugin_params: list[PluginParamExpectation] = field(default_factory=list)
+    expect_channel_levels: list[ChannelLevelExpectation] = field(default_factory=list)
     extra_invariants: list = field(default_factory=list)
 
 
@@ -98,6 +99,41 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "set_native_plugin_param end-to-end. Verifies the agent "
             "can patch a native FL plugin parameter into an expected "
             "byte range while also composing musical content."
+        ),
+    ),
+    FullSongCase(
+        id="mix_balance_pass",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
+        user_prompt=(
+            "This project has 2 channels (Sampler iid=0, Kick iid=1). "
+            "Both default to volume 0.78 (raw 10000) and pan center. "
+            "Do a quick mix balance: "
+            "(1) Lower the Kick volume to 0.5 via set_channel_volume "
+            "(iid=1). "
+            "(2) Pan the Sampler 30% to the right via set_channel_pan "
+            "(iid=0, value=0.3). "
+            "Don't add or remove notes. Project path: "
+        ),
+        min_notes_added=0,
+        min_grade=4,
+        max_iterations=10,
+        expect_channel_levels=[
+            ChannelLevelExpectation(
+                iid=1,
+                field="volume",
+                min_normalized=0.45,
+                max_normalized=0.55,
+            ),
+            ChannelLevelExpectation(
+                iid=0,
+                field="pan",
+                min_normalized=0.20,
+                max_normalized=0.40,
+            ),
+        ],
+        description=(
+            "Exercises set_channel_volume + set_channel_pan (F6.2). "
+            "Verifies the agent can do basic mixing without composing."
         ),
     ),
     FullSongCase(

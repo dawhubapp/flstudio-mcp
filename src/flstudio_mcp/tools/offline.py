@@ -95,6 +95,9 @@ OfflineKind = Literal[
     "humanize_timings",
     "reverse_pattern_notes",
     "invert_pattern_notes",
+    # Epic 6 / F6.2 — channel volume + pan
+    "set_channel_volume",
+    "set_channel_pan",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -141,6 +144,8 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "humanize_timings",
     "reverse_pattern_notes",
     "invert_pattern_notes",
+    "set_channel_volume",
+    "set_channel_pan",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -178,6 +183,8 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "humanize_timings",
         "reverse_pattern_notes",
         "invert_pattern_notes",
+        "set_channel_volume",
+        "set_channel_pan",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -446,6 +453,8 @@ def register(
             "  - humanize_timings(path, pattern_id, range_ticks, seed?): add ±range_ticks jitter to positions. Clamps to >=0. Auto-grows pattern length.\n"
             "  - reverse_pattern_notes(path, pattern_id): mirror notes in time about pattern length (or fallback notesEndTick when length=0).\n"
             "  - invert_pattern_notes(path, pattern_id, axis_key?): mirror keys about axis_key (default 60); clamps to [0, 131].\n"
+            "  - set_channel_volume(path, iid, value): set a channel's volume slider. value normalized 0..1 (FL default 0.78 = 10000/12800).\n"
+            "  - set_channel_pan(path, iid, value): set a channel's pan slider. value bipolar -1..+1 (-1 = full left, 0 = center, +1 = full right).\n"
             "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"

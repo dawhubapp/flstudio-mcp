@@ -336,6 +336,66 @@ def make_plugin_param_changed_invariant(exp: PluginParamExpectation) -> Invarian
     return Invariant(name=name, kind="hard", predicate=predicate)
 
 
+@dataclass
+class ChannelLevelExpectation:
+    """Assert a channel's volume or pan landed in an expected normalized range.
+
+    Reads `state.channels[iid].levels.{volume,pan}` from the AFTER
+    state (already exposed by `list_channels`), normalizes per the
+    raw scale, and asserts in `[min_normalized, max_normalized]`.
+    Volume scale: raw / 12800. Pan scale: raw / 6400 (bipolar).
+    """
+
+    iid: int
+    field: Literal["volume", "pan"]
+    min_normalized: float
+    max_normalized: float
+
+
+def make_channel_level_invariant(exp: ChannelLevelExpectation) -> Invariant:
+    name = (
+        f"channel_level:iid={exp.iid}.{exp.field}"
+        f"[{exp.min_normalized:.2f},{exp.max_normalized:.2f}]"
+    )
+    scale = 12800 if exp.field == "volume" else 6400
+
+    def predicate(ctx: InvariantContext) -> InvariantResult:
+        ch = next((c for c in ctx.after.channels if c.get("iid") == exp.iid), None)
+        if ch is None:
+            return InvariantResult(
+                passed=False,
+                detail=f"channel iid={exp.iid} not found in AFTER state",
+            )
+        levels = ch.get("levels")
+        if not isinstance(levels, dict):
+            return InvariantResult(
+                passed=False,
+                detail=f"channel iid={exp.iid} has no levels dict",
+            )
+        raw = levels.get(exp.field)
+        if not isinstance(raw, (int, float)):
+            return InvariantResult(
+                passed=False,
+                detail=f"levels.{exp.field} not numeric ({raw!r})",
+            )
+        normalized = raw / scale
+        if not (exp.min_normalized <= normalized <= exp.max_normalized):
+            return InvariantResult(
+                passed=False,
+                detail=(
+                    f"channel iid={exp.iid} {exp.field}={normalized:.4f} (raw {raw}) "
+                    f"outside [{exp.min_normalized:.2f}, {exp.max_normalized:.2f}]"
+                ),
+                remediation="agent must call set_channel_volume / set_channel_pan with target value",
+            )
+        return InvariantResult(
+            passed=True,
+            detail=f"channel iid={exp.iid} {exp.field}={normalized:.4f} (raw {raw})",
+        )
+
+    return Invariant(name=name, kind="hard", predicate=predicate)
+
+
 def build_invariants(
     *,
     min_notes_added: int,
@@ -343,6 +403,7 @@ def build_invariants(
     expect_new_pattern: bool = False,
     expect_new_channel: bool = False,
     expect_plugin_params: list[PluginParamExpectation] | None = None,
+    expect_channel_levels: list[ChannelLevelExpectation] | None = None,
 ) -> list[Invariant]:
     """Compose the per-case invariant list from a case's flags."""
     out: list[Invariant] = list(FULL_SONG_BASE_INVARIANTS)
@@ -355,4 +416,6 @@ def build_invariants(
         out.append(make_expect_new_channel_invariant())
     for exp in expect_plugin_params or []:
         out.append(make_plugin_param_changed_invariant(exp))
+    for exp in expect_channel_levels or []:
+        out.append(make_channel_level_invariant(exp))
     return out

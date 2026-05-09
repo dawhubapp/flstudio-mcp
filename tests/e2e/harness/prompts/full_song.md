@@ -59,6 +59,12 @@ Every kind takes `args = {"path": "<path>", ...}`.
   about pattern length.
 - `invert_pattern_notes(path, pattern_id, axis_key?)` — mirror keys
   about `axis_key` (default 60 = C5).
+- `set_channel_volume(path, iid, value)` — set a channel's volume
+  slider. `value` normalized 0..1 (FL default 0.78). Use this for
+  basic mixing ("turn the bass down 6dB" ≈ value 0.5 if it was at
+  the default 0.78).
+- `set_channel_pan(path, iid, value)` — set a channel's pan slider.
+  `value` bipolar -1..+1 (-1 = full left, 0 = center, +1 = right).
 
 ## Goal
 
