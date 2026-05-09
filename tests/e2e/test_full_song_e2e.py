@@ -82,6 +82,7 @@ async def test_full_song(
 
     invariants_list = build_invariants(
         min_notes_added=case.min_notes_added,
+        min_controllers_added=case.min_controllers_added,
         expect_new_pattern=case.expect_new_pattern,
         expect_new_channel=case.expect_new_channel,
         expect_plugin_params=case.expect_plugin_params,

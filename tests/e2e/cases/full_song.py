@@ -27,6 +27,7 @@ class FullSongCase:
     user_prompt: str
     min_notes_added: int  # post.total_notes - pre.total_notes >= this
     min_grade: int
+    min_controllers_added: int = 0  # post.total_controllers - pre >= this (0 = unchecked)
     max_iterations: int = 15
     max_input_tokens: int = 500_000  # opus has 1M context; give headroom
     # Default agent + judge models per project standard: opus drives,
@@ -97,6 +98,30 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "set_native_plugin_param end-to-end. Verifies the agent "
             "can patch a native FL plugin parameter into an expected "
             "byte range while also composing musical content."
+        ),
+    ),
+    FullSongCase(
+        id="add_volume_automation",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
+        user_prompt=(
+            "This project has a kick channel and one pattern with a "
+            "single note. Add a 4-keyframe volume swell automation to "
+            "that pattern, scoped to the kick channel. Use "
+            "add_pattern_controller (not arrangement clips). "
+            "Keyframes: position 0 at value 0.0; position 96 at 0.4; "
+            "position 192 at 0.8; position 288 at 1.0 (a clean fade-in "
+            "across 4 beats at PPQ=96). channel_iid = the kick channel's "
+            "iid (look it up with list_channels). Do not modify the "
+            "existing note. Project path: "
+        ),
+        min_notes_added=0,
+        min_controllers_added=4,
+        min_grade=3,
+        max_iterations=15,
+        description=(
+            "Exercises add_pattern_controller (0xDF encoder). Verifies "
+            "the agent reads channel state, identifies the right "
+            "channel_iid, and lands 4 keyframes with monotonic ramp."
         ),
     ),
     FullSongCase(

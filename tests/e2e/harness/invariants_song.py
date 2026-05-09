@@ -50,6 +50,49 @@ def _per_pattern_notes(state: Any) -> dict[int, int]:
     return counts
 
 
+def _total_controllers(state: Any) -> int:
+    total = 0
+    for pat in state.patterns:
+        ctrls = pat.get("controllers")
+        if isinstance(ctrls, list):
+            total += len(ctrls)
+        elif isinstance(ctrls, int):
+            total += ctrls
+    return total
+
+
+def make_controllers_added_invariant(min_added: int) -> Invariant:
+    """Hard invariant: post.total_controllers - pre.total_controllers >= min_added.
+
+    Counts pattern-scoped controllers (0xDF, decoded by the parser
+    into PatternSummary.controllers) across every pattern. Mirrors
+    `make_notes_added_invariant`.
+    """
+
+    def predicate(ctx: InvariantContext) -> InvariantResult:
+        before = _total_controllers(ctx.before)
+        after = _total_controllers(ctx.after)
+        delta = after - before
+        if delta >= min_added:
+            return InvariantResult(
+                passed=True,
+                detail=f"{delta} controllers added (>= {min_added}); total {before} -> {after}",
+            )
+        return InvariantResult(
+            passed=False,
+            detail=(
+                f"only {delta} controllers added; expected >= {min_added} "
+                f"(total {before} -> {after})"
+            ),
+            remediation=(
+                "agent must call add_pattern_controller / set_pattern_controllers "
+                "enough times to satisfy the case"
+            ),
+        )
+
+    return Invariant(name=f"controllers_added_>={min_added}", kind="hard", predicate=predicate)
+
+
 def make_notes_added_invariant(min_added: int) -> Invariant:
     """Build a hard invariant: post.total_notes - pre.total_notes >= min_added."""
 
@@ -296,6 +339,7 @@ def make_plugin_param_changed_invariant(exp: PluginParamExpectation) -> Invarian
 def build_invariants(
     *,
     min_notes_added: int,
+    min_controllers_added: int = 0,
     expect_new_pattern: bool = False,
     expect_new_channel: bool = False,
     expect_plugin_params: list[PluginParamExpectation] | None = None,
@@ -303,6 +347,8 @@ def build_invariants(
     """Compose the per-case invariant list from a case's flags."""
     out: list[Invariant] = list(FULL_SONG_BASE_INVARIANTS)
     out.append(make_notes_added_invariant(min_notes_added))
+    if min_controllers_added > 0:
+        out.append(make_controllers_added_invariant(min_controllers_added))
     if expect_new_pattern:
         out.append(make_expect_new_pattern_invariant())
     if expect_new_channel:

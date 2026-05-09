@@ -24,6 +24,18 @@ Every kind takes `args = {"path": "<path>", ...}`.
   `add_pattern_note` (minus `path`/`pattern_id`).
 - `remove_pattern_note(path, pattern_id, index)` — remove one note by
   position in the pattern's note list.
+- `add_pattern_controller(path, pattern_id, position, channel, value, flags?)`
+  — add one keyframe to a pattern-scoped automation curve (opcode
+  0xDF). `position` in PPQ ticks; `channel` is the channel iid the
+  automation targets; `value` is normalized 0..1 (float32, written
+  raw). `flags` is an int (default 0). Multiple `add_pattern_controller`
+  calls on the same channel build up a piecewise-linear curve at
+  the keyframe positions.
+- `set_pattern_controllers(path, pattern_id, controllers)` — replace
+  every controller in a pattern with the given list. Each entry
+  shape: `{position, channel, value, flags?}`.
+- `remove_pattern_controller(path, pattern_id, index)` — remove one
+  by index.
 - `set_native_plugin_param(path, scope, param, value)` — patch one
   parameter of a Fruity native plugin's state. Currently supports
   `Fruity Parametric EQ 2` (use `param={kind: "main_level"}` or

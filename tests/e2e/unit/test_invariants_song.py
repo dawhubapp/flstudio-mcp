@@ -19,6 +19,7 @@ from ..harness.invariants_song import (
     _find_plugin_blob,
     _no_existing_notes_lost,
     build_invariants,
+    make_controllers_added_invariant,
     make_expect_new_channel_invariant,
     make_expect_new_pattern_invariant,
     make_notes_added_invariant,
@@ -148,6 +149,53 @@ def test_build_invariants_default():
     assert "notes_added_>=4" in names
     assert "new_pattern_created" not in names
     assert "new_channel_created" not in names
+
+
+# ----------------------------------------------------------- controllers_added #
+
+
+def test_controllers_added_pass():
+    inv = make_controllers_added_invariant(min_added=4)
+    before = _state(patterns=[{"id": 1, "notes": [], "controllers": []}])
+    after = _state(
+        patterns=[
+            {"id": 1, "notes": [], "controllers": [{"position": p} for p in [0, 96, 192, 288]]}
+        ]
+    )
+    result = inv.predicate(_ctx(before, after))
+    assert result.passed
+    assert "4 controllers added" in result.detail
+
+
+def test_controllers_added_fail_too_few():
+    inv = make_controllers_added_invariant(min_added=4)
+    before = _state(patterns=[{"id": 1, "notes": [], "controllers": []}])
+    after = _state(
+        patterns=[{"id": 1, "notes": [], "controllers": [{"position": 0}, {"position": 96}]}]
+    )
+    result = inv.predicate(_ctx(before, after))
+    assert not result.passed
+    assert "only 2 controllers added" in result.detail
+
+
+def test_controllers_added_handles_missing_field():
+    """Patterns may omit the controllers key entirely (= 0)."""
+    inv = make_controllers_added_invariant(min_added=1)
+    before = _state(patterns=[{"id": 1, "notes": []}])  # no controllers key
+    after = _state(patterns=[{"id": 1, "notes": [], "controllers": [{"position": 0}]}])
+    result = inv.predicate(_ctx(before, after))
+    assert result.passed
+
+
+def test_build_invariants_includes_controllers_when_requested():
+    invs = build_invariants(min_notes_added=0, min_controllers_added=4)
+    names = {i.name for i in invs}
+    assert "controllers_added_>=4" in names
+    # When min_controllers_added=0, no invariant added (default skip).
+    invs2 = build_invariants(min_notes_added=4)
+    names2 = {i.name for i in invs2}
+    assert "controllers_added_>=0" not in names2
+    assert not any(n.startswith("controllers_added") for n in names2)
 
 
 def test_build_invariants_with_optional():
