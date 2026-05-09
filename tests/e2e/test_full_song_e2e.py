@@ -103,6 +103,7 @@ async def test_full_song(
             run=run,
             invariants=invariants,
             client=anthropic_client,
+            model=case.judge_model,
             rubric_path=JUDGE_RUBRIC_SONG_PATH,
             task_label="full-song-edit",
         )
