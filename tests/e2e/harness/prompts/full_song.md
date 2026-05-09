@@ -77,6 +77,11 @@ Every kind takes `args = {"path": "<path>", ...}`.
   `[{pattern_id, bars, position_ticks?}]`. Positions computed
   sequentially (`bars * beats_per_bar * ppq`) unless explicitly
   given. Default `track_index=0`, `beats_per_bar=4`.
+- `instantiate_native_plugin(path, donor_path, plugin_name, insert_index, slot_marker)`
+  — load a native FL plugin onto a fresh mixer slot by splicing from
+  a donor FLP that already has it. Returns `{fl_ipc_slot_index =
+  slot_marker + 1}`. Best-effort: FL UI recognition works; IPC
+  binding may fail in some cases.
 
 ## Goal
 
