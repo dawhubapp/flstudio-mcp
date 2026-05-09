@@ -40,7 +40,7 @@ class JudgeVerdict:
 
 JUDGE_TOOL_DEF: dict[str, Any] = {
     "name": JUDGE_TOOL_NAME,
-    "description": "Submit your grade for the agent's reorganize attempt.",
+    "description": "Submit your grade for the agent's task attempt.",
     "input_schema": {
         "type": "object",
         "required": ["grade", "rationale"],
@@ -125,13 +125,23 @@ async def call_judge(
     client: AnthropicClient,
     model: str = DEFAULT_JUDGE_MODEL,
     rubric: str | None = None,
+    rubric_path: Path | None = None,
+    task_label: str = "reorganize-project",
 ) -> JudgeVerdict:
     """Call Claude to grade the agent's run. One API call.
 
     The model is forced to use ``submit_grade`` via ``tool_choice``
-    so we don't have to parse free text.
+    so we don't have to parse free text. ``rubric_path`` overrides
+    the default rubric file (full-song flow uses a song-specific
+    rubric); ``rubric`` (raw text) overrides both. ``task_label``
+    customises the prompt's "Grade this <X> attempt" framing.
     """
-    rubric_text = rubric if rubric is not None else load_rubric()
+    if rubric is not None:
+        rubric_text = rubric
+    elif rubric_path is not None:
+        rubric_text = rubric_path.read_text(encoding="utf-8")
+    else:
+        rubric_text = load_rubric()
     payload = {
         "before": _state_summary(before),
         "after": _state_summary(after),
@@ -141,7 +151,7 @@ async def call_judge(
         "iterations": run.iterations,
     }
     user_text = (
-        "Grade this reorganize-project attempt against the rubric. "
+        f"Grade this {task_label} attempt against the rubric. "
         "Submit your verdict via the submit_grade tool.\n\n"
         f"Data:\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
     )

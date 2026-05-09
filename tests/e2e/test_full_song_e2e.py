@@ -27,6 +27,7 @@ from .harness.reporting import write_artifacts
 from .harness.state_capture import capture_state
 
 FULL_SONG_PROMPT_PATH = Path(__file__).parent / "harness" / "prompts" / "full_song.md"
+JUDGE_RUBRIC_SONG_PATH = Path(__file__).parent / "harness" / "prompts" / "judge_rubric_song.md"
 
 
 def _flpdiff_cmd() -> list[str]:
@@ -102,6 +103,8 @@ async def test_full_song(
             run=run,
             invariants=invariants,
             client=anthropic_client,
+            rubric_path=JUDGE_RUBRIC_SONG_PATH,
+            task_label="full-song-edit",
         )
     except Exception as exc:
         judge_error = repr(exc)
