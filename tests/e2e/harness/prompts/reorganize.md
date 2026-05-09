@@ -74,3 +74,34 @@ of text, then execute.
 
 When you're done, end your turn (no more tool calls). The user will
 verify automatically.
+
+## Worked example — 4-channel synthetic walkthrough
+
+Project state: 4 unnamed channels (Sample 1..4), all on Master, no
+patterns named, default colors. Approach:
+
+```
+1. offline_execute(describe) + list_channels + list_mixer
+   → identify channels by sample_path: 909-Kick, 909-Snare, 909-HH, 808-Bass
+2. Plan: drum group (red/orange) + bass (blue). 4 separate inserts.
+3. Apply (parallel where possible):
+   - set_channel_name(iid=0, name="Kick")
+   - set_channel_name(iid=1, name="Snare")
+   - set_channel_name(iid=2, name="HH")
+   - set_channel_name(iid=3, name="Bass")
+   - set_channel_color(iid=0, color={r: 233, g: 75, b: 60})  # drums hard
+   - set_channel_color(iid=1, color={r: 233, g: 75, b: 60})
+   - set_channel_color(iid=2, color={r: 255, g: 140, b: 66})  # drums soft
+   - set_channel_color(iid=3, color={r: 59, g: 130, b: 246})  # bass
+   - set_channel_routing(iid=0, target_insert=1)
+   - set_channel_routing(iid=1, target_insert=2)
+   - set_channel_routing(iid=2, target_insert=3)
+   - set_channel_routing(iid=3, target_insert=4)
+   - set_insert_name(index=1, name="Kick"), color matches channel
+   - ...same pattern for inserts 2..4
+4. End turn.
+```
+
+Key tips: identify content by `sample_path`, not by default name.
+Group by content (drums share warm hues, bass = blue). Routing is
+1:1 (one channel → one insert).

@@ -93,3 +93,58 @@ verify automatically.
 4. Execute: create channels/patterns first if needed, then add notes
    in order.
 5. Stop.
+
+## Worked examples
+
+These show canonical workflows. Do NOT copy literally — adapt to the
+user's actual prompt.
+
+### Example A — "Add a 16-note melody to an empty channel"
+
+```
+1. offline_execute(describe) → ppq=96, 1 channel (Sampler iid=0), 0 patterns
+2. offline_execute(create_channel, name="Lead") → {channel_iid: 1}
+3. offline_execute(create_pattern, name="Lead Hook") → {pattern_id: 1}
+4. offline_execute(set_pattern_notes, pattern_id=1, notes=[
+     {position: 0, channel_iid: 1, length: 96, key: 60, velocity: 100, ...},
+     {position: 96, channel_iid: 1, length: 96, key: 64, velocity: 105, ...},
+     ... 14 more ...
+   ])
+5. End turn.
+```
+
+Key tips: batch via `set_pattern_notes` instead of 16 sequential
+`add_pattern_note` calls (cheaper). Vary velocity (95–115) for
+musicality. Stay in C5..C6 register (FL keys 60..84).
+
+### Example B — "Tweak EQ 2 main level + add notes"
+
+```
+1. offline_execute(describe) → identify EQ 2 location
+2. offline_execute(find_plugin_instances, plugin_name="EQ 2")
+   → [{scope: "mixer", insert_index: 1, slot_index: 0, ...}]
+3. offline_execute(create_pattern, name="Hook") → {pattern_id: 1}
+4. offline_execute(set_pattern_notes, pattern_id=1, notes=[...4 notes...])
+5. offline_execute(set_native_plugin_param,
+     scope={kind: "mixer_slot", insert_index: 1, slot_index: 0},
+     param={kind: "main_level"}, value=0.8)
+6. End turn.
+```
+
+Key tips: use `find_plugin_instances` instead of walking
+`list_mixer` to locate the plugin. Compose first, tweak last.
+
+### Example C — "Lay 3 patterns into a song" (via add_clip)
+
+```
+1. offline_execute(list_arrangements) → [{id: 0, ...}]
+2. offline_execute(list_patterns) → [{id: 1, name: "Verse"}, {id: 2, name: "Chorus"}]
+3. offline_execute(add_clip, arrangement_id=0, kind="pattern",
+     ref_id=1, track_index=0, position_ticks=0, length_ticks=384)
+4. offline_execute(add_clip, ..., position_ticks=384, ref_id=2, ...)
+5. offline_execute(add_clip, ..., position_ticks=768, ref_id=1, ...)
+6. End turn.
+```
+
+Key tips: PPQ=96 default → 1 bar 4/4 = 384 ticks. Position is
+absolute in the arrangement timeline. Track 0 = top track.
