@@ -4,13 +4,16 @@ Flow 2 exercises the F2.x mutation kinds: notes, controllers,
 pattern/channel creation, native plugin params. Each case bundles a
 baseline FLP, a user prompt describing the musical addition, and the
 minimum required outcome (note count delta, channel/pattern creation,
-etc.) checked by ``invariants_song.FULL_SONG_INVARIANTS``.
+plugin-param byte-range, etc.) checked by
+``invariants_song.build_invariants``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..harness.invariants_song import PluginParamExpectation
 
 CORPUS_DIR = Path(__file__).resolve().parents[4] / "flpdiff" / "tests" / "corpus"
 
@@ -33,6 +36,7 @@ class FullSongCase:
     description: str = ""
     expect_new_pattern: bool = False
     expect_new_channel: bool = False
+    expect_plugin_params: list[PluginParamExpectation] = field(default_factory=list)
     extra_invariants: list = field(default_factory=list)
 
 
@@ -53,6 +57,46 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "Synthetic 1-pattern FLP — smoke that the agent can read state, "
             "then call add_pattern_note (or set_pattern_notes) 4+ times to "
             "land bass notes on the existing channel + pattern."
+        ),
+    ),
+    FullSongCase(
+        id="tweak_eq2_and_compose",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_insert.flp",
+        user_prompt=(
+            "This project has a Sampler channel and a Fruity Parametric "
+            "EQ 2 loaded on insert 1, slot 0. Do two things: "
+            "(1) create a new pattern named 'Hook' and add a 4-note "
+            "melody on the Sampler channel in the C5..C6 range "
+            "(FL keys 60..84), quarter-note grid (positions 0, 96, 192, "
+            "288 at PPQ=96), velocity 100, length=96. "
+            "(2) Boost the EQ 2 main level on insert 1, slot 0 to "
+            "approximately 0.8 (in normalized 0..1 units). "
+            "Use set_native_plugin_param with scope='mixer_slot', "
+            "param={'kind': 'main_level'}, value=0.8. "
+            "Project path: "
+        ),
+        min_notes_added=4,
+        min_grade=3,
+        max_iterations=20,
+        expect_new_pattern=True,
+        expect_plugin_params=[
+            # EQ 2 main level lives at byte 0x90 of the 354-byte blob;
+            # u16 LE = round(v * 0xFFFF). Accept [0.7, 0.95] so the
+            # agent has float-precision wiggle room around 0.8.
+            PluginParamExpectation(
+                plugin_name="Fruity Parametric EQ 2",
+                blob_size=354,
+                offset=0x90,
+                field_type="u16",
+                min_normalized=0.7,
+                max_normalized=0.95,
+            ),
+        ],
+        description=(
+            "Hard case: exercises create_pattern + add_pattern_note + "
+            "set_native_plugin_param end-to-end. Verifies the agent "
+            "can patch a native FL plugin parameter into an expected "
+            "byte range while also composing musical content."
         ),
     ),
     FullSongCase(

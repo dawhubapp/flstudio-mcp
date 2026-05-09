@@ -7,12 +7,16 @@ batch); we only verify the post-state delta. Hard invariants:
 - Total note count grew by at least the case's `min_notes_added`.
 - All notes still parse cleanly via flpdiff (never exit code 2).
 - No existing pattern *lost* notes (agent shouldn't accidentally wipe).
+- Optional: a specific native-plugin parameter byte changed and
+  decodes into an expected normalized [0,1] range.
 """
 
 from __future__ import annotations
 
+import struct
 import subprocess
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from .invariants import (
     Invariant,
@@ -140,11 +144,161 @@ FULL_SONG_BASE_INVARIANTS: list[Invariant] = [
 ]
 
 
+# ---------------------------------------------------------------------- #
+# Plugin parameter byte-level invariants                                 #
+# ---------------------------------------------------------------------- #
+
+
+@dataclass
+class PluginParamExpectation:
+    """Assert one native-plugin parameter changed into an expected range.
+
+    Locate the plugin's `0xD5` state blob in the post-FLP raw bytes
+    (search by UTF-16LE name + match against `blob_size`), decode
+    the bytes at `offset` per `field_type`, normalize to [0,1], and
+    assert in `[min_normalized, max_normalized]`.
+
+    `scale` is required for `field_type == "i32_bipolar"`.
+    """
+
+    plugin_name: str
+    blob_size: int
+    offset: int
+    field_type: Literal["u8", "u16", "u32", "i32_bipolar"]
+    min_normalized: float
+    max_normalized: float
+    scale: int | None = None
+
+
+def _find_plugin_blob(flp_bytes: bytes, plugin_name: str, expected_size: int) -> bytes | None:
+    """Search FLP for a 0xD5 blob immediately following ``plugin_name``
+    (UTF-16LE NUL-terminated) and matching ``expected_size`` bytes.
+
+    Walks forward from the name match scanning for `0xD5 + varint
+    length + payload`. Returns the payload bytes or None if no
+    match.
+    """
+    needle = plugin_name.encode("utf-16le") + b"\x00\x00"
+    idx = flp_bytes.find(needle)
+    if idx < 0:
+        return None
+    p = idx
+    end = len(flp_bytes) - 5
+    while p < end:
+        if flp_bytes[p] == 0xD5:
+            length = 0
+            shift = 0
+            q = p + 1
+            try:
+                while True:
+                    b = flp_bytes[q]
+                    length |= (b & 0x7F) << shift
+                    q += 1
+                    if (b & 0x80) == 0:
+                        break
+                    shift += 7
+            except IndexError:
+                return None
+            payload = flp_bytes[q : q + length]
+            if length == expected_size:
+                return payload
+        p += 1
+    return None
+
+
+def _decode_param_normalized(blob: bytes, exp: PluginParamExpectation) -> float | None:
+    """Decode the bytes at ``exp.offset`` per ``exp.field_type`` into [0,1].
+
+    Inverse of the encoder in flpdiff/src/mutations/index.ts:
+    - u8:  raw / 0xFF
+    - u16: raw / 0xFFFF (LE)
+    - u32: raw / 0xFFFFFFFF (LE)
+    - i32_bipolar: (signed/scale + 1) / 2 (LE)
+    """
+    if exp.offset < 0:
+        return None
+    end = exp.offset + (1 if exp.field_type == "u8" else (2 if exp.field_type == "u16" else 4))
+    if end > len(blob):
+        return None
+    if exp.field_type == "u8":
+        return blob[exp.offset] / 0xFF
+    if exp.field_type == "u16":
+        raw = struct.unpack_from("<H", blob, exp.offset)[0]
+        return raw / 0xFFFF
+    if exp.field_type == "u32":
+        raw = struct.unpack_from("<I", blob, exp.offset)[0]
+        return raw / 0xFFFFFFFF
+    if exp.field_type == "i32_bipolar":
+        if exp.scale is None or exp.scale == 0:
+            return None
+        signed = struct.unpack_from("<i", blob, exp.offset)[0]
+        return (signed / exp.scale + 1) / 2
+    return None
+
+
+def make_plugin_param_changed_invariant(exp: PluginParamExpectation) -> Invariant:
+    name = (
+        f"plugin_param_changed:{exp.plugin_name}@0x{exp.offset:x}"
+        f"[{exp.min_normalized:.2f},{exp.max_normalized:.2f}]"
+    )
+
+    def predicate(ctx: InvariantContext) -> InvariantResult:
+        before_bytes = ctx.before_path.read_bytes()
+        after_bytes = ctx.after_path.read_bytes()
+        before_blob = _find_plugin_blob(before_bytes, exp.plugin_name, exp.blob_size)
+        after_blob = _find_plugin_blob(after_bytes, exp.plugin_name, exp.blob_size)
+        if before_blob is None:
+            return InvariantResult(
+                passed=False,
+                detail=f"plugin {exp.plugin_name!r} blob not found in BEFORE FLP",
+                remediation="case fixture must already contain the target plugin",
+            )
+        if after_blob is None:
+            return InvariantResult(
+                passed=False,
+                detail=f"plugin {exp.plugin_name!r} blob not found in AFTER FLP",
+                remediation="agent's mutations may have corrupted or removed the plugin's 0xD5 blob",
+            )
+        before_val = _decode_param_normalized(before_blob, exp)
+        after_val = _decode_param_normalized(after_blob, exp)
+        if before_val is None or after_val is None:
+            return InvariantResult(
+                passed=False,
+                detail=f"could not decode param at offset 0x{exp.offset:x} ({exp.field_type})",
+                remediation="check expectation offset/field_type matches the layout in flpdiff/src/mutations/index.ts",
+            )
+        if abs(after_val - before_val) < 1e-6:
+            return InvariantResult(
+                passed=False,
+                detail=(
+                    f"param at 0x{exp.offset:x} unchanged ({before_val:.4f}); "
+                    f"expected change into [{exp.min_normalized:.2f}, {exp.max_normalized:.2f}]"
+                ),
+                remediation="agent must call set_native_plugin_param with the requested target value",
+            )
+        if not (exp.min_normalized <= after_val <= exp.max_normalized):
+            return InvariantResult(
+                passed=False,
+                detail=(
+                    f"param at 0x{exp.offset:x} = {after_val:.4f} outside expected "
+                    f"[{exp.min_normalized:.2f}, {exp.max_normalized:.2f}] (was {before_val:.4f})"
+                ),
+                remediation="agent set the plugin param but to a value outside the requested range",
+            )
+        return InvariantResult(
+            passed=True,
+            detail=f"param at 0x{exp.offset:x} changed {before_val:.4f} -> {after_val:.4f}",
+        )
+
+    return Invariant(name=name, kind="hard", predicate=predicate)
+
+
 def build_invariants(
     *,
     min_notes_added: int,
     expect_new_pattern: bool = False,
     expect_new_channel: bool = False,
+    expect_plugin_params: list[PluginParamExpectation] | None = None,
 ) -> list[Invariant]:
     """Compose the per-case invariant list from a case's flags."""
     out: list[Invariant] = list(FULL_SONG_BASE_INVARIANTS)
@@ -153,4 +307,6 @@ def build_invariants(
         out.append(make_expect_new_pattern_invariant())
     if expect_new_channel:
         out.append(make_expect_new_channel_invariant())
+    for exp in expect_plugin_params or []:
+        out.append(make_plugin_param_changed_invariant(exp))
     return out

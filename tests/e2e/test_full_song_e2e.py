@@ -84,6 +84,7 @@ async def test_full_song(
         min_notes_added=case.min_notes_added,
         expect_new_pattern=case.expect_new_pattern,
         expect_new_channel=case.expect_new_channel,
+        expect_plugin_params=case.expect_plugin_params,
     )
     ctx = InvariantContext(
         before=before,
