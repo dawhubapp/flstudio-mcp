@@ -52,7 +52,7 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "spaced one beat apart, length = 1 beat each. Project path: "
         ),
         min_notes_added=4,
-        min_grade=3,
+        min_grade=4,
         max_iterations=10,
         description=(
             "Synthetic 1-pattern FLP — smoke that the agent can read state, "
@@ -77,7 +77,7 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "Project path: "
         ),
         min_notes_added=4,
-        min_grade=3,
+        min_grade=4,
         max_iterations=20,
         expect_new_pattern=True,
         expect_plugin_params=[
@@ -113,7 +113,7 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "kick channel. Project path: "
         ),
         min_notes_added=4,
-        min_grade=3,
+        min_grade=4,
         max_iterations=15,
         description=(
             "Exercises humanize_velocities + add_pattern_note. Verifies "
@@ -137,7 +137,7 @@ FULL_SONG_CASES: list[FullSongCase] = [
         ),
         min_notes_added=0,
         min_controllers_added=4,
-        min_grade=3,
+        min_grade=4,
         max_iterations=15,
         description=(
             "Exercises add_pattern_controller (0xDF encoder). Verifies "
@@ -161,7 +161,7 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "Project path: "
         ),
         min_notes_added=8,
-        min_grade=3,
+        min_grade=4,
         max_iterations=20,
         expect_new_pattern=True,
         expect_new_channel=True,

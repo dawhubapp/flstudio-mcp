@@ -26,7 +26,7 @@ REORGANIZE_CASES: list[ReorganizeCase] = [
     ReorganizeCase(
         id="synthetic_smoke",
         input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
-        min_grade=3,
+        min_grade=4,
         max_iterations=8,
         # Haiku 4.5: low cost + much higher tokens-per-minute rate
         # limit than sonnet, more than enough headroom for a 1-channel
