@@ -72,6 +72,11 @@ Every kind takes `args = {"path": "<path>", ...}`.
   the default 0.78).
 - `set_channel_pan(path, iid, value)` — set a channel's pan slider.
   `value` bipolar -1..+1 (-1 = full left, 0 = center, +1 = right).
+- `arrange_song(path, arrangement, structure, track_index?, beats_per_bar?)`
+  — lay out a sequence of pattern clips on one track. `structure` =
+  `[{pattern_id, bars, position_ticks?}]`. Positions computed
+  sequentially (`bars * beats_per_bar * ppq`) unless explicitly
+  given. Default `track_index=0`, `beats_per_bar=4`.
 
 ## Goal
 

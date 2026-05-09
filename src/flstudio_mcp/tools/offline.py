@@ -103,6 +103,7 @@ OfflineKind = Literal[
     # Epic 6 / F6.2 — channel volume + pan
     "set_channel_volume",
     "set_channel_pan",
+    "arrange_song",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -155,6 +156,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "invert_pattern_notes",
     "set_channel_volume",
     "set_channel_pan",
+    "arrange_song",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -194,6 +196,7 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "invert_pattern_notes",
         "set_channel_volume",
         "set_channel_pan",
+    "arrange_song",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -468,6 +471,7 @@ def register(
             "  - invert_pattern_notes(path, pattern_id, axis_key?): mirror keys about axis_key (default 60); clamps to [0, 131].\n"
             "  - set_channel_volume(path, iid, value): set a channel's volume slider. value normalized 0..1 (FL default 0.78 = 10000/12800).\n"
             "  - set_channel_pan(path, iid, value): set a channel's pan slider. value bipolar -1..+1 (-1 = full left, 0 = center, +1 = full right).\n"
+            "  - arrange_song(path, arrangement, structure, track_index?, beats_per_bar?): lay out a sequence of pattern clips on one track. structure = [{pattern_id, bars, position_ticks?}]. Positions computed sequentially from bars * beats_per_bar * ppq unless overridden. Default track_index=0, beats_per_bar=4.\n"
             "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"
