@@ -43,6 +43,22 @@ Every kind takes `args = {"path": "<path>", ...}`.
   `Fruity Reeverb 2`, `Fruity Limiter` (use `param={kind: "param",
   index: N}` — find N from the plugin's UI param order). `value` is
   normalized 0..1.
+- `set_pattern_length(path, pattern_id, ticks)` — write/update the
+  pattern-length scalar (PPQ ticks). Useful when you need to grow a
+  pattern past its current length.
+- `transpose_pattern_notes(path, pattern_id, semitones, channel_iid?)`
+  — shift every note's key by N semitones; optional channel filter.
+- `quantize_pattern_notes(path, pattern_id, grid_ticks, strength?)`
+  — snap positions to nearest grid multiple. `strength` 0..1
+  (default 1 = full snap, 0.5 = halfway). Auto-grows pattern length.
+- `humanize_velocities(path, pattern_id, range, seed?)` — add ±range
+  jitter to velocities (clamped 1..127). For "make this groovier".
+- `humanize_timings(path, pattern_id, range_ticks, seed?)` — add
+  ±range_ticks position jitter. Auto-grows pattern length.
+- `reverse_pattern_notes(path, pattern_id)` — mirror notes in time
+  about pattern length.
+- `invert_pattern_notes(path, pattern_id, axis_key?)` — mirror keys
+  about `axis_key` (default 60 = C5).
 
 ## Goal
 

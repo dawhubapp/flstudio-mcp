@@ -101,6 +101,27 @@ FULL_SONG_CASES: list[FullSongCase] = [
         ),
     ),
     FullSongCase(
+        id="humanize_stiff_pattern",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
+        user_prompt=(
+            "The existing pattern feels robotic. Make it groovier: "
+            "(1) humanize the velocities with range 15 (use "
+            "humanize_velocities); (2) add 4 transposed copies of the "
+            "existing note one octave LOWER (key 51 instead of 63) "
+            "spaced one beat apart (positions 0, 96, 192, 288 at "
+            "PPQ=96). Use add_pattern_note for each new note on the "
+            "kick channel. Project path: "
+        ),
+        min_notes_added=4,
+        min_grade=3,
+        max_iterations=15,
+        description=(
+            "Exercises humanize_velocities + add_pattern_note. Verifies "
+            "the agent can mix musical-transformation kinds with "
+            "compose-style kinds."
+        ),
+    ),
+    FullSongCase(
         id="add_volume_automation",
         input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
         user_prompt=(
