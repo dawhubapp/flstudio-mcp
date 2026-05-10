@@ -182,15 +182,26 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "available; lighter yellow; insert 4). Use create_channel for "
             "each new one. "
             "(5) Create a pattern named 'Beat'. Add a classic 4-on-the-floor "
-            "techno pattern at PPQ=96, 4 bars long (1536 ticks): "
-            "  - Kick: every quarter note (positions 0, 96, 192, 288, 384, 480, ...). "
-            "    Length 96, velocity 110, key 60. "
-            "  - Snare: on beats 2 and 4 of each bar (positions 96, 288, 480, 672, ...). "
-            "    Length 48, velocity 100, key 60. "
-            "  - Closed hat: every 8th note OFF the kick (positions 48, 144, 240, 336, ...). "
-            "    Length 24, velocity 80, key 60. "
-            "  - Open hat: sparse accent, twice per bar at the and-of-3 (positions 240, 624, 1008, 1392). "
-            "    Length 48, velocity 90, key 60. "
+            "techno pattern at PPQ=96, 4 bars long (1536 ticks). "
+            "IMPORTANT: build all notes for the pattern in ONE single "
+            "set_pattern_notes(path, pattern_id, notes=[...]) call with "
+            "the full array — do NOT call add_pattern_note per note (that "
+            "burns output tokens and will hit the cap before you finish). "
+            "Compute positions programmatically in the notes array: "
+            "  - Kick (channel_iid=0): every quarter note. "
+            "    positions = [0, 96, 192, 288, 384, 480, 576, 672, 768, 864, 960, 1056, 1152, 1248, 1344, 1440] "
+            "    length=96, velocity=110, key=60. "
+            "  - Snare (channel_iid=1): on beats 2 and 4 of each bar. "
+            "    positions = [96, 288, 480, 672, 864, 1056, 1248, 1440] "
+            "    length=48, velocity=100, key=60. "
+            "  - Closed hat (channel_iid=2): every 8th note OFF the kick. "
+            "    positions = [48, 144, 240, 336, 432, 528, 624, 720, 816, 912, 1008, 1104, 1200, 1296, 1392, 1488] "
+            "    length=24, velocity=80, key=60. "
+            "  - Open hat (channel_iid=3): sparse accents. "
+            "    positions = [240, 624, 1008, 1392] "
+            "    length=48, velocity=90, key=60. "
+            "Concatenate all into one notes array (~44 notes total) and "
+            "submit via a single set_pattern_notes call. "
             "(6) Mix balance: set_channel_volume — kick 0.85, snare 0.75, "
             "closed hat 0.55, open hat 0.6. "
             "(7) arrange_song(arrangement=0, structure=[{pattern_id: <id>, "
@@ -209,7 +220,10 @@ FULL_SONG_CASES: list[FullSongCase] = [
         ],
         expect_channel_levels=[
             ChannelLevelExpectation(
-                iid=0, field="volume", min_normalized=0.7, max_normalized=0.95,
+                iid=0,
+                field="volume",
+                min_normalized=0.7,
+                max_normalized=0.95,
             ),
         ],
         description=(
