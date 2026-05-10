@@ -163,6 +163,64 @@ FULL_SONG_CASES: list[FullSongCase] = [
         ),
     ),
     FullSongCase(
+        id="techno_loop_demo",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_empty.flp",
+        user_prompt=(
+            "Build a 4-bar techno loop at 128 BPM from this empty project. "
+            "You have FL Studio's full factory drum library available via "
+            "list_factory_samples. Workflow: "
+            "(1) set_tempo(bpm=128). "
+            "(2) Use list_factory_samples(category='Drums', query='kick') "
+            "to find a punchy techno kick (909/707/808). Pick one. "
+            "(3) The default Sampler channel (iid=0) is empty. Reuse it: "
+            "set_channel_name to 'Kick', set_channel_color (kick should "
+            "be red-ish), set_channel_sample_path to your chosen kick token, "
+            "set_channel_routing to insert 1. "
+            "(4) Repeat for snare (find via category='Drums', query='snare'; "
+            "warm orange color; route to insert 2), closed hat (query='hat' "
+            "or 'hh'; yellow; insert 3), open hat (different sample if "
+            "available; lighter yellow; insert 4). Use create_channel for "
+            "each new one. "
+            "(5) Create a pattern named 'Beat'. Add a classic 4-on-the-floor "
+            "techno pattern at PPQ=96, 4 bars long (1536 ticks): "
+            "  - Kick: every quarter note (positions 0, 96, 192, 288, 384, 480, ...). "
+            "    Length 96, velocity 110, key 60. "
+            "  - Snare: on beats 2 and 4 of each bar (positions 96, 288, 480, 672, ...). "
+            "    Length 48, velocity 100, key 60. "
+            "  - Closed hat: every 8th note OFF the kick (positions 48, 144, 240, 336, ...). "
+            "    Length 24, velocity 80, key 60. "
+            "  - Open hat: sparse accent, twice per bar at the and-of-3 (positions 240, 624, 1008, 1392). "
+            "    Length 48, velocity 90, key 60. "
+            "(6) Mix balance: set_channel_volume — kick 0.85, snare 0.75, "
+            "closed hat 0.55, open hat 0.6. "
+            "(7) arrange_song(arrangement=0, structure=[{pattern_id: <id>, "
+            "bars: 4}, {pattern_id: <id>, bars: 4}, {pattern_id: <id>, "
+            "bars: 4}, {pattern_id: <id>, bars: 4}]) — 16 bars total. "
+            "End. Project path: "
+        ),
+        min_notes_added=24,  # 16 kick + 8 snare minimum (relaxed from full ~56)
+        min_grade=4,
+        max_iterations=30,
+        max_input_tokens=600_000,
+        expect_new_pattern=True,
+        expect_new_channel=True,  # snare, hat, hat = at least 3 new
+        expect_channel_sample_paths=[
+            ChannelSamplePathExpectation(iid=0, must_differ=True, new_substring=".wav"),
+        ],
+        expect_channel_levels=[
+            ChannelLevelExpectation(
+                iid=0, field="volume", min_normalized=0.7, max_normalized=0.95,
+            ),
+        ],
+        description=(
+            "FULLY AUTONOMOUS techno loop demo (Variant A). Agent builds "
+            "a 4-bar 128 BPM techno groove from base_empty.flp with no "
+            "human input on composition. Uses sample browser + channel "
+            "creation + pattern notes + mixing + arrange_song end-to-end. "
+            "Drum-driven only — no synth/automation gaps."
+        ),
+    ),
+    FullSongCase(
         id="swap_kick_sample",
         input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
         user_prompt=(
