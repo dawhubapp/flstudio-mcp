@@ -105,6 +105,9 @@ OfflineKind = Literal[
     "set_channel_pan",
     "arrange_song",
     "instantiate_native_plugin",
+    "set_channel_sample_path",
+    # Epic 7 / F7.1 — factory sample browser (no FLP path required)
+    "list_factory_samples",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -159,6 +162,8 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "set_channel_pan",
     "arrange_song",
     "instantiate_native_plugin",
+    "set_channel_sample_path",
+    "list_factory_samples",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -200,6 +205,7 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "set_channel_pan",
     "arrange_song",
     "instantiate_native_plugin",
+    "set_channel_sample_path",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -275,6 +281,48 @@ def execute(
         )
         record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
         _LOG.info("offline_execute ok", extra={"kind": kind, "log_id": log_id})
+        return env
+
+    if kind == "list_factory_samples":
+        # F7.1 — read-only browser, no FLP path required, no bridge call.
+        from ..sample_browser import enumerate_factory_samples, to_dict
+
+        category = args.get("category")
+        query = args.get("query")
+        limit_raw = args.get("limit", 100)
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            limit = 100
+        force_walk = bool(args.get("force_walk", False))
+        try:
+            entries = enumerate_factory_samples(
+                category=category if isinstance(category, str) else None,
+                query=query if isinstance(query, str) else None,
+                limit=limit,
+                force_walk=force_walk,
+            )
+        except Exception as exc:
+            return _emit_error(
+                kind=kind,
+                log_id=log_id,
+                started=started,
+                err=ToolError(
+                    ErrorCode.UNKNOWN,
+                    f"sample browser failed: {exc!r}",
+                ),
+            )
+        env = _envelope(
+            ok=True,
+            kind=kind,
+            result={"items": [to_dict(e) for e in entries], "count": len(entries)},
+            started_at=started,
+            log_id=log_id,
+        )
+        record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
+        _LOG.info(
+            "offline_execute ok", extra={"kind": kind, "log_id": log_id, "n": len(entries)}
+        )
         return env
 
     path = args.get("path")
@@ -476,6 +524,8 @@ def register(
             "  - set_channel_pan(path, iid, value): set a channel's pan slider. value bipolar -1..+1 (-1 = full left, 0 = center, +1 = full right).\n"
             "  - arrange_song(path, arrangement, structure, track_index?, beats_per_bar?): lay out a sequence of pattern clips on one track. structure = [{pattern_id, bars, position_ticks?}]. Positions computed sequentially from bars * beats_per_bar * ppq unless overridden. Default track_index=0, beats_per_bar=4.\n"
             "  - instantiate_native_plugin(path, donor_path, plugin_name, insert_index, slot_marker): splice a plugin from `donor_path` (any FLP that already has the plugin baked) into `path` at master/insert_index slot_marker. Returns {fl_ipc_slot_index = slot_marker + 1}. Best-effort: FL UI recognition works; IPC binding may fail in some cases (R17). Use UNSUPPORTED_PLUGIN / PLUGIN_INSTANTIATE_FAILED error path to recover.\n"
+            "  - set_channel_sample_path(path, iid, sample_path): set the sample loaded on a sampler channel. sample_path is FL-token form (e.g. '%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav'). Use list_factory_samples to discover token paths.\n"
+            "  - list_factory_samples(category?, query?, limit?, force_walk?): list FL factory wavs from the bundled manifest (~3k samples). category = top-level pack folder (Drums/FLEX/Instruments/Loops/Risers/...); query = filename substring; limit defaults to 100, max 500. force_walk=true rebuilds from filesystem (slow, only if user has third-party packs). Returns {items: [{token, category, subcategory, filename, size_bytes}], count}.\n"
             "Plus: set_*_color, set_channel_routing, set_arrangement_name, set_track_*, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"
             "Refuses with FL_DIALOG_BLOCKING when FL Studio currently has the "
             "file open (avoids in-memory state overwriting our edit).\n"

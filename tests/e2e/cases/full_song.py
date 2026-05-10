@@ -13,7 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..harness.invariants_song import ChannelLevelExpectation, PluginParamExpectation
+from ..harness.invariants_song import (
+    ChannelLevelExpectation,
+    ChannelSamplePathExpectation,
+    PluginParamExpectation,
+)
 
 CORPUS_DIR = Path(__file__).resolve().parents[4] / "flpdiff" / "tests" / "corpus"
 
@@ -39,6 +43,7 @@ class FullSongCase:
     expect_new_channel: bool = False
     expect_plugin_params: list[PluginParamExpectation] = field(default_factory=list)
     expect_channel_levels: list[ChannelLevelExpectation] = field(default_factory=list)
+    expect_channel_sample_paths: list[ChannelSamplePathExpectation] = field(default_factory=list)
     extra_invariants: list = field(default_factory=list)
 
 
@@ -155,6 +160,30 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "Exercises humanize_velocities + add_pattern_note. Verifies "
             "the agent can mix musical-transformation kinds with "
             "compose-style kinds."
+        ),
+    ),
+    FullSongCase(
+        id="swap_kick_sample",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_one_pattern.flp",
+        user_prompt=(
+            "The Kick channel (iid=1) currently uses a 909 Kick sample. "
+            "Replace it with a different vintage drum kick from the FL "
+            "factory library. Steps: (1) call list_factory_samples with "
+            "category='Drums' and query='kick' to see what's available; "
+            "(2) pick one that's NOT the current 909 sample (try 707, "
+            "808, Linn, or similar); (3) call set_channel_sample_path "
+            "to swap it in. Don't add or remove notes. Project path: "
+        ),
+        min_notes_added=0,
+        min_grade=4,
+        max_iterations=10,
+        expect_channel_sample_paths=[
+            ChannelSamplePathExpectation(iid=1, must_differ=True),
+        ],
+        description=(
+            "Exercises list_factory_samples + set_channel_sample_path "
+            "(F7.1). Verifies the agent can browse the factory library "
+            "and swap a sample on an existing channel."
         ),
     ),
     FullSongCase(

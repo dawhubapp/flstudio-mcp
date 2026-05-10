@@ -396,6 +396,60 @@ def make_channel_level_invariant(exp: ChannelLevelExpectation) -> Invariant:
     return Invariant(name=name, kind="hard", predicate=predicate)
 
 
+@dataclass
+class ChannelSamplePathExpectation:
+    """Assert a channel's sample_path changed from baseline AND
+    optionally that the new path matches a substring (e.g. '707').
+    """
+
+    iid: int
+    must_differ: bool = True
+    new_substring: str | None = None  # case-insensitive substring match on new path
+
+
+def make_channel_sample_path_invariant(exp: ChannelSamplePathExpectation) -> Invariant:
+    name = f"channel_sample_path:iid={exp.iid}"
+    if exp.new_substring:
+        name += f"~{exp.new_substring!r}"
+
+    def predicate(ctx: InvariantContext) -> InvariantResult:
+        before = next((c for c in ctx.before.channels if c.get("iid") == exp.iid), None)
+        after = next((c for c in ctx.after.channels if c.get("iid") == exp.iid), None)
+        if after is None:
+            return InvariantResult(
+                passed=False,
+                detail=f"channel iid={exp.iid} missing from AFTER state",
+            )
+        before_path = before.get("sample_path") if before else None
+        after_path = after.get("sample_path")
+        if not after_path or not isinstance(after_path, str):
+            return InvariantResult(
+                passed=False,
+                detail=f"channel iid={exp.iid} has no sample_path in AFTER state",
+                remediation="agent must call set_channel_sample_path with a non-empty FL token",
+            )
+        if exp.must_differ and after_path == before_path:
+            return InvariantResult(
+                passed=False,
+                detail=f"channel iid={exp.iid} sample_path unchanged ({after_path!r})",
+                remediation="agent must change the sample_path, not leave it as the baseline",
+            )
+        if exp.new_substring and exp.new_substring.lower() not in after_path.lower():
+            return InvariantResult(
+                passed=False,
+                detail=(
+                    f"channel iid={exp.iid} sample_path={after_path!r} "
+                    f"does not contain expected substring {exp.new_substring!r}"
+                ),
+            )
+        return InvariantResult(
+            passed=True,
+            detail=f"channel iid={exp.iid} sample_path: {before_path!r} -> {after_path!r}",
+        )
+
+    return Invariant(name=name, kind="hard", predicate=predicate)
+
+
 def build_invariants(
     *,
     min_notes_added: int,
@@ -404,6 +458,7 @@ def build_invariants(
     expect_new_channel: bool = False,
     expect_plugin_params: list[PluginParamExpectation] | None = None,
     expect_channel_levels: list[ChannelLevelExpectation] | None = None,
+    expect_channel_sample_paths: list[ChannelSamplePathExpectation] | None = None,
 ) -> list[Invariant]:
     """Compose the per-case invariant list from a case's flags."""
     out: list[Invariant] = list(FULL_SONG_BASE_INVARIANTS)
@@ -418,4 +473,6 @@ def build_invariants(
         out.append(make_plugin_param_changed_invariant(exp))
     for exp in expect_channel_levels or []:
         out.append(make_channel_level_invariant(exp))
+    for exp in expect_channel_sample_paths or []:
+        out.append(make_channel_sample_path_invariant(exp))
     return out

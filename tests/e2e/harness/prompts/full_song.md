@@ -82,6 +82,18 @@ Every kind takes `args = {"path": "<path>", ...}`.
   a donor FLP that already has it. Returns `{fl_ipc_slot_index =
   slot_marker + 1}`. Best-effort: FL UI recognition works; IPC
   binding may fail in some cases.
+- `set_channel_sample_path(path, iid, sample_path)` — swap the sample
+  loaded on a sampler channel. `sample_path` is FL-token form (e.g.
+  `%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav`).
+  Discover token paths via `list_factory_samples`.
+- `list_factory_samples(category?, query?, limit?, force_walk?)` —
+  list FL factory wavs from the bundled manifest (~3k samples).
+  `category` = top-level pack folder (Drums / FLEX / Instruments /
+  Loops / Risers / etc.); `query` = filename substring; `limit`
+  default 100, max 500. Returns `{items: [{token, category,
+  subcategory, filename, size_bytes}], count}`. **Use this when
+  picking a specific sound**: filter by category first, then narrow
+  by query, then hand the `token` field to `set_channel_sample_path`.
 
 ## Goal
 
