@@ -108,6 +108,10 @@ OfflineKind = Literal[
     "set_channel_sample_path",
     # Epic 7 / F7.1 — factory sample browser (no FLP path required)
     "list_factory_samples",
+    # Epic 9 / F9.4 — factory plugin-preset browser (no FLP path required)
+    "list_factory_presets",
+    # Epic 9 / F9.5 — load .fst plugin preset onto a target FLP
+    "load_factory_preset",
 ]
 SUPPORTED_KINDS: tuple[str, ...] = (
     "describe",
@@ -164,6 +168,8 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "instantiate_native_plugin",
     "set_channel_sample_path",
     "list_factory_samples",
+    "list_factory_presets",
+    "load_factory_preset",
 )
 WRITE_KINDS: frozenset[str] = frozenset(
     {
@@ -203,9 +209,10 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "invert_pattern_notes",
         "set_channel_volume",
         "set_channel_pan",
-    "arrange_song",
-    "instantiate_native_plugin",
-    "set_channel_sample_path",
+        "arrange_song",
+        "instantiate_native_plugin",
+        "set_channel_sample_path",
+        "load_factory_preset",
     }
 )
 TOOL_NAME = "offline_execute"
@@ -320,9 +327,59 @@ def execute(
             log_id=log_id,
         )
         record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
-        _LOG.info(
-            "offline_execute ok", extra={"kind": kind, "log_id": log_id, "n": len(entries)}
+        _LOG.info("offline_execute ok", extra={"kind": kind, "log_id": log_id, "n": len(entries)})
+        return env
+
+    if kind == "list_factory_presets":
+        # F9.4 — read-only browser, no FLP path required, no bridge call.
+        from ..preset_browser import enumerate_factory_presets, to_dict
+
+        plugin = args.get("plugin")
+        kind_filter = args.get("kind")
+        query = args.get("query")
+        limit_raw = args.get("limit", 100)
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            limit = 100
+        force_walk = bool(args.get("force_walk", False))
+        if kind_filter not in (None, "generator", "effect", "channel_state"):
+            return _emit_error(
+                kind=kind,
+                log_id=log_id,
+                started=started,
+                err=ToolError(
+                    ErrorCode.INVALID_ARGS,
+                    "args.kind must be one of 'generator' / 'effect' / 'channel_state'",
+                ),
+            )
+        try:
+            entries = enumerate_factory_presets(
+                plugin=plugin if isinstance(plugin, str) else None,
+                kind=kind_filter,
+                query=query if isinstance(query, str) else None,
+                limit=limit,
+                force_walk=force_walk,
+            )
+        except Exception as exc:
+            return _emit_error(
+                kind=kind,
+                log_id=log_id,
+                started=started,
+                err=ToolError(
+                    ErrorCode.UNKNOWN,
+                    f"preset browser failed: {exc!r}",
+                ),
+            )
+        env = _envelope(
+            ok=True,
+            kind=kind,
+            result={"items": [to_dict(e) for e in entries], "count": len(entries)},
+            started_at=started,
+            log_id=log_id,
         )
+        record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
+        _LOG.info("offline_execute ok", extra={"kind": kind, "log_id": log_id, "n": len(entries)})
         return env
 
     path = args.get("path")
@@ -526,6 +583,8 @@ def register(
             "  - instantiate_native_plugin(path, donor_path, plugin_name, insert_index, slot_marker): splice a plugin from `donor_path` (any FLP that already has the plugin baked) into `path` at master/insert_index slot_marker. Returns {fl_ipc_slot_index = slot_marker + 1}. Best-effort: FL UI recognition works; IPC binding may fail in some cases (R17). Use UNSUPPORTED_PLUGIN / PLUGIN_INSTANTIATE_FAILED error path to recover.\n"
             "  - set_channel_sample_path(path, iid, sample_path): set the sample loaded on a sampler channel. sample_path is FL-token form (e.g. '%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav'). Use list_factory_samples to discover token paths.\n"
             "  - list_factory_samples(category?, query?, limit?, force_walk?): list FL factory wavs from the bundled manifest (~3k samples). category = top-level pack folder (Drums/FLEX/Instruments/Loops/Risers/...); query = filename substring; limit defaults to 100, max 500. force_walk=true rebuilds from filesystem (slow, only if user has third-party packs). Returns {items: [{token, category, subcategory, filename, size_bytes}], count}.\n"
+            "  - list_factory_presets(plugin?, kind?, query?, limit?, force_walk?): list FL native plugin presets (.fst) from the bundled manifest (~7k presets). plugin = case-insensitive plugin name substring (e.g. 'DX10', 'Reeverb'); kind = 'generator' (synth → channel splice), 'effect' (mixer-slot splice), or 'channel_state' (Channel presets dir); query = preset-name substring; limit defaults to 100, max 500. Returns {items: [{path, plugin, preset_name, category, kind, size_bytes}], count}. Path is FL-token form ready to pass to load_factory_preset.\n"
+            "  - load_factory_preset(path, fst_path, kind, name?, insert_index?, slot_marker?): splice a .fst plugin preset into `path`. fst_path accepts FL token form (e.g. '%FLStudioFactoryData%/Data/Patches/Plugin presets/Generators/Fruity DX10/Steel Guitar.fst') or absolute filesystem path. kind='generator' splices as a new channel (returns {channel_iid}); kind='effect' splices into mixer slot at (insert_index, slot_marker) and returns {fl_ipc_slot_index = slot_marker + 1}. Optional `name` overrides the new channel's display name for generators.\n"
             "  - set_channel_color / set_insert_color / set_pattern_color / set_track_color: set color of a channel/insert/pattern/track. **All take args.color = {r, g, b, a?}** with **r/g/b as 0..255 INTEGERS** (NOT 0..1 floats). Optional alpha defaults to 0. Example: `set_channel_color(path, iid=0, color={r: 233, g: 75, b: 60})` for red. set_insert_color takes `index` (0=master). set_pattern_color takes `iid`. set_track_color takes `arrangement` + `track`.\n"
             "  - set_channel_routing(path, iid, target_insert): route a channel to a mixer insert. **NOTE: param is `target_insert` (NOT `insert_index`).**\n"
             "Plus: set_arrangement_name, set_track_name, set_track_grouped, clone_pattern, add_clip, remove_clip, move_clip, reorganize_project. See list_apis for the full set.\n"

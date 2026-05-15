@@ -429,4 +429,47 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "Stress-test for the bug fixed in flpdiff 6cd7e15."
         ),
     ),
+    FullSongCase(
+        id="compose_with_dx10_bass",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_empty.flp",
+        user_prompt=(
+            "Build a 4-bar bassline at 120 BPM using a real Fruity DX10 "
+            "preset (NOT a sample channel). Workflow: "
+            "(1) set_tempo(bpm=120). "
+            "(2) list_factory_presets(plugin='DX10', kind='generator') to "
+            "discover the available DX10 presets. Pick a bass-sounding "
+            "one (Chunky Bass, Bouncy Bass, anything with 'bass' in the "
+            "name); if none, just pick the first DX10 preset. "
+            "(3) load_factory_preset(path, fst_path=<picked path>, "
+            "kind='generator', name='Bass') — that returns "
+            "{channel_iid} for the freshly-loaded DX10 channel. "
+            "(4) create_pattern(name='Bassline'). "
+            "(5) set_pattern_notes(path, pattern_id=<new id>, notes=[...]) "
+            "with 16 notes targeting the new channel_iid. DX10 is a "
+            "native plugin (not a sample channel), so it plays at "
+            "WRITTEN pitch — use musical bass-octave keys 36..47 "
+            "(C2..B2). Quarter-note grid for a 4-bar pattern at PPQ=96 "
+            "= positions [0, 96, 192, 288, 384, 480, 576, 672, 768, "
+            "864, 960, 1056, 1152, 1248, 1344, 1440]. Vary the keys "
+            "across [36, 36, 39, 36, 41, 36, 39, 36, 36, 36, 39, 36, "
+            "41, 38, 39, 36] for a walking bassline; length=96, "
+            "velocity=100. "
+            "(6) arrange_song(arrangement=0, structure=[{pattern_id: "
+            "<new id>, bars: 4}]) — single 4-bar clip on the playlist. "
+            "End. Project path: "
+        ),
+        min_notes_added=16,
+        min_grade=4,
+        max_iterations=15,
+        max_input_tokens=400_000,
+        max_output_tokens_per_turn=8192,
+        expect_new_pattern=True,
+        expect_new_channel=True,
+        description=(
+            "F9.6 — first e2e that loads a native FL plugin onto a "
+            "fresh channel via load_factory_preset and writes notes "
+            "for it. Validates list_factory_presets discovery + .fst "
+            "splice + note targeting end-to-end on a single agent run."
+        ),
+    ),
 ]

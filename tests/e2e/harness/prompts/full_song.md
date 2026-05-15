@@ -94,6 +94,26 @@ Every kind takes `args = {"path": "<path>", ...}`.
   subcategory, filename, size_bytes}], count}`. **Use this when
   picking a specific sound**: filter by category first, then narrow
   by query, then hand the `token` field to `set_channel_sample_path`.
+- `list_factory_presets(plugin?, kind?, query?, limit?, force_walk?)` —
+  list FL native plugin presets (`.fst`) from the bundled manifest
+  (~7k presets). `plugin` = case-insensitive plugin-name substring
+  (e.g. `'DX10'`, `'Reeverb'`); `kind` ∈ `{'generator', 'effect',
+  'channel_state'}`; `query` = preset-name substring; `limit`
+  default 100, max 500. Returns `{items: [{path, plugin,
+  preset_name, category, kind, size_bytes}], count}`. The `path`
+  field is the FL token ready to pass to `load_factory_preset`.
+- `load_factory_preset(path, fst_path, kind, name?, insert_index?,
+  slot_marker?)` — splice a `.fst` plugin preset into `path`.
+  `fst_path` accepts FL token form OR an absolute filesystem path.
+  `kind='generator'` adds the preset as a new channel and returns
+  `{channel_iid}`; `kind='effect'` requires `insert_index +
+  slot_marker` and returns `{fl_ipc_slot_index = slot_marker + 1}`.
+  Optional `name` overrides the new channel's display name for
+  generators. **Key octave rule:** native plugins (BooBass, DX10,
+  Sytrus, etc.) play at WRITTEN pitch — use the actual musical
+  octave (bassline 36..47, lead 60..84). This is the OPPOSITE of
+  `set_channel_sample_path` where factory samples play at C5
+  (key 60) native and bass MIDI keys live around 72..79.
 
 ## Goal
 
