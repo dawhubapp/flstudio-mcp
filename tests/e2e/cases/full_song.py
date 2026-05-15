@@ -34,6 +34,7 @@ class FullSongCase:
     min_controllers_added: int = 0  # post.total_controllers - pre >= this (0 = unchecked)
     max_iterations: int = 15
     max_input_tokens: int = 500_000  # opus has 1M context; give headroom
+    max_output_tokens_per_turn: int = 4096
     # Default agent + judge models per project standard: opus drives,
     # sonnet grades. Cases override per-test if needed.
     model: str = "claude-opus-4-7"
@@ -306,6 +307,113 @@ FULL_SONG_CASES: list[FullSongCase] = [
             "Hard case: exercises create_channel + create_pattern + "
             "add_pattern_note end-to-end. Validates that the agent "
             "doesn't merge work into the existing pattern/channel."
+        ),
+    ),
+    FullSongCase(
+        id="house_song_multipattern",
+        input_flp=CORPUS_DIR / "re_base" / "fl25" / "base_empty.flp",
+        user_prompt=(
+            "Build a 32-bar deep-house arrangement at 124 BPM from this "
+            "empty project. PPQ=96, so 1 bar = 384 ticks, 4 bars = 1536 ticks. "
+            "Two patterns alternate to create verse/drop dynamics. "
+            "STRATEGY (critical for token budget): "
+            "(a) for each pattern, build the full notes array in ONE "
+            "set_pattern_notes(path, pattern_id, notes=[...]) call. Do "
+            "NOT use add_pattern_note per-note. "
+            "(b) Channel setup MUST batch in PARALLEL tool calls — issue "
+            "all create_channel + set_channel_sample_path + "
+            "set_channel_color + set_channel_volume + set_channel_routing "
+            "calls in a SINGLE message (multiple tool_use blocks). "
+            "Sequential per-channel iterations burn the per-turn output "
+            "budget. "
+            "(c) Patterns may go in a second message; arrangement in a "
+            "third. Target: full song in ≤4 model turns. "
+            "(1) set_tempo(bpm=124). "
+            "(2) Set up 5 channels (use list_factory_samples for each, "
+            "category='Drums' or 'Bass'): "
+            "  - iid=0 (default Sampler): rename 'Kick', red color, "
+            "    set_channel_sample_path to a deep house kick (909/707 "
+            "    style), volume 0.85, route to insert 1. "
+            "  - create_channel 'Snare': orange, snare/clap sample, "
+            "    volume 0.7, insert 2. "
+            "  - create_channel 'Hat': yellow, closed hat sample, "
+            "    volume 0.75, insert 3. "
+            "  - create_channel 'Bass': blue, sub-bass or bass-loop "
+            "    sample (try query='bass' or 'sub'), volume 0.75, "
+            "    insert 4. "
+            "  - create_channel 'Stab': purple/magenta, chord/stab "
+            "    sample (try query='chord' or 'stab' or 'piano'), "
+            "    volume 0.6, insert 5. "
+            "(3) create_pattern 'Verse' (4 bars, sparse). Build one "
+            "    set_pattern_notes call with: "
+            "    - Kick (channel_iid=0): 4-on-floor, positions [0, 96, "
+            "      192, 288, 384, 480, 576, 672, 768, 864, 960, 1056, "
+            "      1152, 1248, 1344, 1440], length=96, velocity=105, "
+            "      key=60. (16 notes) "
+            "    - Hat (channel_iid=2): off-beat 8ths, positions [48, "
+            "      144, 240, 336, 432, 528, 624, 720, 816, 912, 1008, "
+            "      1104, 1200, 1296, 1392, 1488], length=24, "
+            "      velocity=110, key=60. (16 notes) "
+            "    Total verse = 32 notes. "
+            "(4) create_pattern 'Drop' (4 bars, full). Build one "
+            "    set_pattern_notes call with: "
+            "    - Kick (iid=0): same 16 positions as verse, "
+            "      velocity=115. "
+            "    - Snare (iid=1): backbeat, positions [96, 288, 480, "
+            "      672, 864, 1056, 1248, 1440], length=48, "
+            "      velocity=100, key=60. (8 notes) "
+            "    - Hat (iid=2): same 16 positions as verse, "
+            "      velocity=115. "
+            "    - Bass (iid=3): walking bass, positions [0, 96, 192, "
+            "      288, 384, 480, 576, 672, 768, 864, 960, 1056, 1152, "
+            "      1248, 1344, 1440] with keys cycling [72, 72, 75, "
+            "      72, 72, 72, 77, 74, 72, 72, 75, 72, 72, 72, 77, 74] "
+            "      (C5 root — that's FL's native sample pitch — with "
+            "      motion to D#5/F5/D5; using key=36 here would play "
+            "      the sample 2 octaves below its native root and "
+            "      sound like sub-rumble), length=96, velocity=100. "
+            "      (16 notes) "
+            "    - Stab (iid=4): chord hits on backbeat, positions "
+            "      [96, 288, 480, 672, 864, 1056, 1248, 1440], "
+            "      length=48, velocity=100, key=60. (8 notes) "
+            "    Total drop = 64 notes. "
+            "(5) arrange_song(arrangement=0, structure=[ "
+            "      {pattern_id: <Verse>, bars: 4}, "
+            "      {pattern_id: <Verse>, bars: 4}, "
+            "      {pattern_id: <Drop>,  bars: 4}, "
+            "      {pattern_id: <Drop>,  bars: 4}, "
+            "      {pattern_id: <Verse>, bars: 4}, "
+            "      {pattern_id: <Drop>,  bars: 4}, "
+            "      {pattern_id: <Drop>,  bars: 4}, "
+            "      {pattern_id: <Drop>,  bars: 4} "
+            "    ]) — 32 bars total, V-V-D-D-V-D-D-D structure. "
+            "End. Project path: "
+        ),
+        min_notes_added=80,  # 32 + 64 = 96; relax to 80 for partial credit
+        min_grade=4,
+        max_iterations=30,
+        max_input_tokens=600_000,
+        max_output_tokens_per_turn=8192,  # set_pattern_notes(64 notes) is large
+        expect_new_pattern=True,
+        expect_new_channel=True,
+        expect_channel_sample_paths=[
+            ChannelSamplePathExpectation(iid=0, must_differ=True, new_substring=".wav"),
+        ],
+        expect_channel_levels=[
+            ChannelLevelExpectation(
+                iid=0,
+                field="volume",
+                min_normalized=0.7,
+                max_normalized=0.95,
+            ),
+        ],
+        description=(
+            "Multi-pattern deep house arrangement. Two 4-bar patterns "
+            "(Verse sparse, Drop full) alternate across 32 bars. "
+            "Validates: multi-pattern composition, melodic bass lines "
+            "(varied keys not just key=60), sort-fix correctness across "
+            "5 channels, and arrangement structure repeating patterns. "
+            "Stress-test for the bug fixed in flpdiff 6cd7e15."
         ),
     ),
 ]

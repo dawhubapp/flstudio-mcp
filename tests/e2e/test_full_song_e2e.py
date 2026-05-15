@@ -74,6 +74,7 @@ async def test_full_song(
                 system_prompt=system_prompt,
                 max_iterations=case.max_iterations,
                 max_input_tokens=case.max_input_tokens,
+                max_output_tokens_per_turn=case.max_output_tokens_per_turn,
             ),
             client=anthropic_client,
             tool_filter=lambda tools: [t for t in tools if t["name"] == "offline_execute"],
