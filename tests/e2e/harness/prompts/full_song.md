@@ -98,10 +98,20 @@ Every kind takes `args = {"path": "<path>", ...}`.
 ## Goal
 
 Add the requested musical content to the project. Be specific and
-musical — not random keys. If the user asks for a bassline, write
-notes in a bass register (C2..C4, FL keys ~36..72). If they ask for a
-melody, use C5..C6 range (FL keys ~60..84). Respect the project's
-PPQ when computing positions.
+musical — not random keys. Respect the project's PPQ when computing
+positions.
+
+**FL sample-root convention (critical for sample-based channels):**
+FL's factory samples are pitched at C5 (FL key 60) — that is the
+native unpitched playback pitch. `add_pattern_note(key=60)` on a
+sampler channel plays the sample at its baked-in pitch. `key=36` (C2)
+plays it 2 octaves below native → sub-rumble for bass samples, dull
+thuds for kicks. Pick keys around C5 unless the sample is explicitly
+single-cycle / synth-style: bassline on a factory bass sample →
+keys 72..79 (C5..G5) for a normal-register bassline; melody on a
+factory pluck/pad → keys 60..72; drum hits → key=60. Native plugin
+instruments (BooBass, Sytrus, etc.) play at written pitch — for
+those, use the musical octave (bassline 36..47, lead 60..84).
 
 When you're done, end your turn (no more tool calls). The user will
 verify automatically.
@@ -115,6 +125,26 @@ verify automatically.
 4. Execute: create channels/patterns first if needed, then add notes
    in order.
 5. Stop.
+
+### Token-budget rules (hard)
+
+The agent loop has a per-turn output-token cap (4096 default, 8192
+for cases that emit very large `set_pattern_notes` payloads). Hit it
+and the turn truncates mid-tool-call. Avoid this by minimising turns:
+
+- **Bulk over sequential.** One `set_pattern_notes(notes=[...])` per
+  pattern, never N `add_pattern_note` calls. Same for
+  `set_pattern_controllers`.
+- **Parallel tool calls within one message.** When the next N calls
+  don't depend on each other (e.g. creating channels A, B, C, D, E,
+  or setting their colors / volumes / routings), emit them as
+  multiple `tool_use` blocks in a SINGLE assistant message — not one
+  per turn. Sequential per-channel iterations are the #1 cause of
+  max_tokens termination.
+- **Target ≤4 turns total** for a full multi-channel song: turn 1 =
+  describe + plan, turn 2 = parallel channel setup, turn 3 =
+  patterns (one `set_pattern_notes` per pattern, parallelised), turn
+  4 = arrangement.
 
 ## Worked examples
 
@@ -137,7 +167,8 @@ user's actual prompt.
 
 Key tips: batch via `set_pattern_notes` instead of 16 sequential
 `add_pattern_note` calls (cheaper). Vary velocity (95–115) for
-musicality. Stay in C5..C6 register (FL keys 60..84).
+musicality. For a melodic lead on a sample-based channel, stay near
+C5 (factory sample root) — keys 60..72.
 
 ### Example B — "Tweak EQ 2 main level + add notes"
 
