@@ -17,6 +17,7 @@ from ..harness.invariants_song import (
     ChannelLevelExpectation,
     ChannelSamplePathExpectation,
     PluginParamExpectation,
+    VisualGateExpectation,
 )
 
 CORPUS_DIR = Path(__file__).resolve().parents[4] / "flpdiff" / "tests" / "corpus"
@@ -45,6 +46,7 @@ class FullSongCase:
     expect_plugin_params: list[PluginParamExpectation] = field(default_factory=list)
     expect_channel_levels: list[ChannelLevelExpectation] = field(default_factory=list)
     expect_channel_sample_paths: list[ChannelSamplePathExpectation] = field(default_factory=list)
+    visual_gates: list[VisualGateExpectation] = field(default_factory=list)
     extra_invariants: list = field(default_factory=list)
 
 
@@ -405,6 +407,17 @@ FULL_SONG_CASES: list[FullSongCase] = [
                 field="volume",
                 min_normalized=0.7,
                 max_normalized=0.95,
+            ),
+        ],
+        visual_gates=[
+            VisualGateExpectation(
+                name="playlist_has_clips",
+                question=(
+                    "Does the FL Studio playlist (timeline) view show "
+                    "multiple non-empty clip blocks laid out across the "
+                    "first several bars? Empty playlists / zero-length "
+                    "clips do NOT count as PASS."
+                ),
             ),
         ],
         description=(

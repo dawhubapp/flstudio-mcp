@@ -373,7 +373,7 @@ def make_channel_level_invariant(exp: ChannelLevelExpectation) -> Invariant:
                 detail=f"channel iid={exp.iid} has no levels dict",
             )
         raw = levels.get(exp.field)
-        if not isinstance(raw, (int, float)):
+        if not isinstance(raw, int | float):
             return InvariantResult(
                 passed=False,
                 detail=f"levels.{exp.field} not numeric ({raw!r})",
@@ -448,6 +448,28 @@ def make_channel_sample_path_invariant(exp: ChannelSamplePathExpectation) -> Inv
         )
 
     return Invariant(name=name, kind="hard", predicate=predicate)
+
+
+@dataclass
+class VisualGateExpectation:
+    """One question for the visual-acceptance gate.
+
+    The gate flow (see ``visual_gate.run_visual_gates``):
+      1. autodrive opens the post-mutation FLP in FL Studio.
+      2. screencapture of FL's frontmost window.
+      3. Claude vision call answers ``question`` PASS/FAIL.
+
+    Soft assertion — failures are surfaced to the judge + sidecar
+    JSON but don't fail the test by default. Gated on
+    ``FLSTUDIO_VISUAL_GATE=1`` because it requires FL running, an
+    interactive macOS session, ~30 s wall time, and ~$0.01 in API
+    cost per gate.
+    """
+
+    question: str
+    name: str | None = None  # short label for the report; defaults to question[:48]
+    must_pass: bool = False  # if True the gate is HARD; surfaces as test failure
+    full_screen: bool = False  # capture entire screen instead of FL window only
 
 
 def build_invariants(
