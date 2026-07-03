@@ -322,7 +322,12 @@ def test_tool_registered_on_built_server(tmp_path: Path, monkeypatch: pytest.Mon
 
 @pytest.mark.anyio
 async def test_tool_callable_via_fastmcp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from flstudio_mcp.installer import verify as verify_installer
+
     _state_dir(tmp_path, monkeypatch)
+    # build_server wires a real Preflight; get_tempo is FL-bound, so stub
+    # process detection or the test only passes when FL Studio is running.
+    monkeypatch.setattr(verify_installer, "detect_fl_processes", lambda: [("OsxFL", 12345)])
     rt = FakeRuntime(responses={"get_tempo": _FakeResult(detail="120.0")})
     instance = server.build_server(runtime_factory=lambda: rt)
     result = await instance.call_tool(live_tool.TOOL_NAME, {"kind": "get_tempo"})

@@ -38,13 +38,13 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def _server_params(tmp_path: Path) -> StdioServerParameters:
+def _server_params(tmp_path: Path, *, log_level: str = "WARNING") -> StdioServerParameters:
     """Launch via the installed entry point with isolated state dirs."""
     env = {
         **os.environ,
         "FLSTUDIO_MCP_NO_AUTO_INSTALL": "1",
         "FLSTUDIO_MCP_HARDWARE_DIR": str(tmp_path / "Hardware"),
-        "FLSTUDIO_MCP_LOG_LEVEL": "WARNING",
+        "FLSTUDIO_MCP_LOG_LEVEL": log_level,
     }
     return StdioServerParameters(
         command=sys.executable,
@@ -124,8 +124,11 @@ async def test_check_iac_via_stdio_matches_local_probe(tmp_path: Path) -> None:
 @pytest.mark.anyio
 async def test_logs_resource_via_stdio(tmp_path: Path) -> None:
     """logs:// resource accessible over the wire after a tool call."""
+    # The live_execute begin/ok + telemetry entries are logged at INFO;
+    # the shared WARNING default would suppress them and the assertion
+    # below would only pass on stale entries from earlier dev sessions.
     async with (
-        stdio_client(_server_params(tmp_path)) as (read, write),
+        stdio_client(_server_params(tmp_path, log_level="INFO")) as (read, write),
         ClientSession(read, write) as session,
     ):
         await session.initialize()
