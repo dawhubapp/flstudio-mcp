@@ -422,8 +422,8 @@ instead.
   stay as standalone rows in their own family — RE'ing the slot-
   pair encoding is deferred. Verified visually in FL on
   `test_track_color=…;automations=link_3.flp` (fold-arrow next to
-  the auto track in Playlist sidebar) and byte-level on
-  `NewStuff.flp` (1.2 MB, 144 channels, 19 linkable autos: 173
+  the auto track in Playlist sidebar) and byte-level on a larger
+  local project (1.2 MB, 144 channels, 19 linkable autos: 173
   tracks, 18 grouped, 5 family separators, 34 ms).
 
 ---

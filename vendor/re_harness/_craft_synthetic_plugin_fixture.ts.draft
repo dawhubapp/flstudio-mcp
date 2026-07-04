@@ -2,35 +2,40 @@
  * Craft a minimal FLP carrying ONLY a Fruity Limiter at insert 1
  * slot 0. Strategy:
  *   1. Read base_one_insert.flp (1 master + 1 user insert, no plugins).
- *   2. Read junie.flp; extract the Limiter's mixer-slot events
- *      (0xCB "Fruity Limiter" + 0xD5 plugin-state blob) — that's
- *      enough to materialize the plugin; FL fills in defaults.
+ *   2. Read a source FLP with a Fruity Limiter on master slot 7;
+ *      extract the Limiter's mixer-slot events (0xCB "Fruity
+ *      Limiter" + 0xD5 plugin-state blob) — that's enough to
+ *      materialize the plugin; FL fills in defaults.
  *   3. Splice those events into the base's insert 1 scope (right
  *      after its 0xEC INSERT_FLAGS event).
  *   4. Serialize to /tmp/base_limiter.flp.
+ *
+ * SOURCE_FLP below points at the gitignored local corpus and won't
+ * resolve in a fresh checkout — swap it for any project you have
+ * handy with a Fruity Limiter on master slot 7.
  */
-import { parseFLPFile } from "/Users/pronskiy/projects/dawhub/flpdiff/src/index.ts";
-import { serializeFLPProject } from "/Users/pronskiy/projects/dawhub/flpdiff/src/parser/flp-write.ts";
+import { parseFLPFile } from "../../../flpdiff/src/index.ts";
+import { serializeFLPProject } from "../../../flpdiff/src/parser/flp-write.ts";
 import { readFileSync, writeFileSync } from "node:fs";
 
 function toAB(b: Buffer): ArrayBuffer {
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 }
 
-const baseBytes = readFileSync(
-  "/Users/pronskiy/projects/dawhub/flpdiff/tests/corpus/re_base/fl25/base_empty.flp",
-);
-const sourceBytes = readFileSync(
-  "/Users/pronskiy/projects/dawhub/flpdiff/tests/corpus/local/junie.flp",
-);
+const SOURCE_FLP =
+  process.env.SOURCE_FLP ?? "../../../flpdiff/tests/corpus/local/<your-fixture>.flp";
+
+const baseBytes = readFileSync("../../../flpdiff/tests/corpus/re_base/fl25/base_empty.flp");
+const sourceBytes = readFileSync(SOURCE_FLP);
 const base = parseFLPFile(toAB(baseBytes));
 const src = parseFLPFile(toAB(sourceBytes));
 
-// Find junie's master slot 7 (Fruity Limiter) full scope. Slot
-// scope = events between this slot's 0x62 marker and the next 0x62
-// (or 0x93). FL needs more than just (0xC9, 0xD5) — supporting
-// events like 0xD4 (plugin runtime data), 0x9B (?), 0x80 (color),
-// 0x29 (?) are all required for FL to recognise the plugin slot.
+// Find the source project's master slot 7 (Fruity Limiter) full
+// scope. Slot scope = events between this slot's 0x62 marker and
+// the next 0x62 (or 0x93). FL needs more than just (0xC9, 0xD5) —
+// supporting events like 0xD4 (plugin runtime data), 0x9B (?),
+// 0x80 (color), 0x29 (?) are all required for FL to recognise the
+// plugin slot.
 let curInsert = 0;
 let curSlot = 0;
 let inMixer = false;
@@ -66,7 +71,7 @@ for (let i = 0; i < src.events.length; i++) {
 }
 
 if (scopeStart < 0 || scopeEnd < 0) {
-  console.error("could not locate junie master slot 7 scope");
+  console.error("could not locate source master slot 7 scope");
   process.exit(1);
 }
 
@@ -89,7 +94,7 @@ if (!isLimiter) {
 }
 
 const limiterScope = src.events.slice(scopeStart, scopeEnd);
-console.log(`extracted ${limiterScope.length} events from junie master slot 7 (Limiter):`);
+console.log(`extracted ${limiterScope.length} events from source master slot 7 (Limiter):`);
 for (const ev of limiterScope) {
   console.log(`  0x${ev.opcode.toString(16)} ${ev.kind}` + (ev.kind === "blob" ? ` (${ev.payload.byteLength}B)` : ` = ${ev.value}`));
 }

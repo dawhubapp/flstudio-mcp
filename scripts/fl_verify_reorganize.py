@@ -11,7 +11,7 @@ Pipeline:
 
 Run:
     uv run python -m scripts.fl_verify_reorganize \\
-        --flp ../flpdiff/tests/corpus/local/h3_ys_64.flp
+        --flp ../flpdiff/tests/corpus/local/<your-fixture>.flp
 
 The script does NOT verify pixel-level — Roman eyeballs the artifacts
 and confirms whether automation tracks visibly nest under their
@@ -118,8 +118,11 @@ def main() -> int:
     parser.add_argument(
         "--flp",
         type=Path,
-        default=REPO_ROOT / "flpdiff" / "tests" / "corpus" / "local" / "h3_ys_64.flp",
-        help="FLP fixture (default: h3_ys_64.flp — has 50 automation channels)",
+        required=True,
+        help=(
+            "FLP fixture to verify (e.g. a project from your local "
+            "gitignored corpus with plenty of automation channels)"
+        ),
     )
     parser.add_argument("--load-wait", type=float, default=15.0)
     args = parser.parse_args()
