@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from flstudio_mcp.sample_browser import (
@@ -58,7 +58,7 @@ def build_manifest(fl_app: Path) -> dict:
     fl_version = detect_fl_version(fl_app) or "unknown"
     return {
         "fl_version": fl_version,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "install_root_at_build": str(fl_app),
         "count": len(samples),
         "samples": samples,

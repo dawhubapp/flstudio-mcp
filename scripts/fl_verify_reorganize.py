@@ -97,7 +97,7 @@ def open_view_playlist() -> None:
 
 def menu_zoom_to_fit() -> None:
     """Try View → Zoom to fit (Shift+W). Best-effort."""
-    code = 'tell application "System Events" to ' 'keystroke "W" using shift down'
+    code = 'tell application "System Events" to keystroke "W" using shift down'
     applescript(code)
 
 

@@ -347,7 +347,7 @@ def main() -> int:
     t0 = time.monotonic()
     plan = plan_reorganize(scratch)
     t_plan = time.monotonic() - t0
-    print(f"plan: {plan.total()} mutations ({t_plan*1000:.0f} ms)")
+    print(f"plan: {plan.total()} mutations ({t_plan * 1000:.0f} ms)")
     print(
         f"  channel_names: {len(plan.channel_names)}, colors: {len(plan.channel_colors)}, routings: {len(plan.channel_routings)}"
     )

@@ -180,9 +180,9 @@ async def test_full_song(
     )
     print(invariants.summary())
 
-    assert (
-        run.terminated != "exception"
-    ), f"agent terminated={run.terminated}: {run.final_text[:300]} (infra failure)"
+    assert run.terminated != "exception", (
+        f"agent terminated={run.terminated}: {run.final_text[:300]} (infra failure)"
+    )
     assert invariants.passed_hard, f"hard invariants failed:\n{invariants.summary()}"
     assert judge is not None, f"judge call failed: {judge_error}"
     assert judge.grade >= case.min_grade, (

@@ -188,7 +188,7 @@ async def main() -> int:
                 extra += f" err={r.error[:80]}"
             print(
                 f"  [{i:3d}/{len(flps)}] [{mark}] {r.name:<45s} "
-                f"{r.bytes/1024:6.0f} KiB  {r.elapsed_ms:6.0f} ms  "
+                f"{r.bytes / 1024:6.0f} KiB  {r.elapsed_ms:6.0f} ms  "
                 f"chans={r.plan_channels:3d}  pats={r.plan_patterns:3d}  "
                 f"muts={r.mutations_applied:3d}{extra}"
             )

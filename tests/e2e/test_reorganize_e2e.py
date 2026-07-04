@@ -136,9 +136,9 @@ async def test_reorganize(
     # may have done all the meaningful work before hitting the cap.
     # We score state, not transcript shape, so any terminated reason
     # other than a true infra failure ("exception") gets graded.
-    assert (
-        run.terminated != "exception"
-    ), f"agent terminated={run.terminated}: {run.final_text[:300]} (infra failure)"
+    assert run.terminated != "exception", (
+        f"agent terminated={run.terminated}: {run.final_text[:300]} (infra failure)"
+    )
     assert invariants.passed_hard, f"hard invariants failed:\n{invariants.summary()}"
     assert judge is not None, f"judge call failed: {judge_error}"
     assert judge.grade >= case.min_grade, (
