@@ -231,3 +231,35 @@ def test_set_pattern_name_write_kind_round_trip(tmp_path) -> None:
         "set_pattern_name",
         {"path": str(flp), "iid": 1, "name": "Verse-1"},
     )
+
+
+@pytest.mark.anyio
+async def test_bridge_free_kinds_work_with_no_bridge_available() -> None:
+    """Regression: the registered tool must not resolve a runtime for
+    BRIDGE_FREE_KINDS.
+
+    ``execute()`` never touches ``runtime`` for these kinds (see
+    ``test_list_apis_doesnt_spawn_runtime`` above), but the dispatcher
+    wired up by ``register()`` used to call ``runtime_factory()``
+    unconditionally *before* dispatch — so on a host with no Node/bun on
+    PATH (a from-scratch CI runner, unlike a dev box with the sibling
+    flpdiff/ workspace checked out), even ``list_apis`` failed with
+    NodeNotFoundError instead of answering directly.
+    """
+    from mcp.server.fastmcp import FastMCP
+
+    def _factory() -> Any:
+        raise NodeNotFoundError("no bridge on this host")
+
+    server = FastMCP(name="test-offline")
+    offline_tool.register(server, runtime_factory=_factory)
+
+    result = await server.call_tool(offline_tool.TOOL_NAME, {"kind": "list_apis"})
+    structured = result[1] if isinstance(result, tuple) else result
+    assert structured["ok"] is True
+    assert "list_apis" in structured["result"]["kinds"]
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"

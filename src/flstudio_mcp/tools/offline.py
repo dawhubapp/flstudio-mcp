@@ -215,6 +215,13 @@ WRITE_KINDS: frozenset[str] = frozenset(
         "load_factory_preset",
     }
 )
+# Kinds ``execute()`` answers without ever touching ``runtime`` — pure
+# Python (list_apis) or a bundled JSON manifest walk (factory browsers).
+# The dispatcher must not resolve a bridge command for these so they
+# keep working with no Node/bun on PATH (see register()).
+BRIDGE_FREE_KINDS: frozenset[str] = frozenset(
+    {"list_apis", "list_factory_samples", "list_factory_presets"}
+)
 TOOL_NAME = "offline_execute"
 
 _LOG = get_logger("tools.offline")
@@ -257,9 +264,13 @@ def execute(
     kind: str,
     args: dict[str, Any] | None,
     *,
-    runtime: OfflineRuntime,
+    runtime: OfflineRuntime | None,
 ) -> dict[str, Any]:
-    """Run one ``offline_execute`` call. Returns the standard envelope."""
+    """Run one ``offline_execute`` call. Returns the standard envelope.
+
+    ``runtime`` may be ``None`` only for kinds in ``BRIDGE_FREE_KINDS`` —
+    they return before it's ever touched.
+    """
     args = args or {}
     log_id = _make_log_id()
     started = time.time()
@@ -596,5 +607,10 @@ def register(
         ),
     )
     def offline_execute(kind: OfflineKind, args: dict[str, Any] | None = None) -> dict[str, Any]:
+        if kind in BRIDGE_FREE_KINDS:
+            # Don't resolve a bridge command for kinds that never use it —
+            # otherwise a host with no Node/bun on PATH can't even answer
+            # list_apis.
+            return execute(kind, args, runtime=None)
         runtime = factory()
         return execute(kind, args, runtime=runtime)
