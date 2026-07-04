@@ -393,7 +393,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },
-    { name = "re-harness", editable = "../python/tools/re_harness" },
+    { name = "re-harness", editable = "vendor/re_harness" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
 ]
 provides-extras = ["dev", "eval"]
@@ -1167,7 +1167,7 @@ wheels = [
 [[package]]
 name = "re-harness"
 version = "0.1.0"
-source = { editable = "../python/tools/re_harness" }
+source = { editable = "vendor/re_harness" }
 
 [package.metadata]
 requires-dist = [{ name = "pyautogui", marker = "extra == 'autodrive'", specifier = ">=0.9.54" }]

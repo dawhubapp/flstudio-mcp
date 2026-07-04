@@ -1,0 +1,140 @@
+/**
+ * Craft a minimal FLP carrying ONLY a Fruity Limiter at insert 1
+ * slot 0. Strategy:
+ *   1. Read base_one_insert.flp (1 master + 1 user insert, no plugins).
+ *   2. Read junie.flp; extract the Limiter's mixer-slot events
+ *      (0xCB "Fruity Limiter" + 0xD5 plugin-state blob) — that's
+ *      enough to materialize the plugin; FL fills in defaults.
+ *   3. Splice those events into the base's insert 1 scope (right
+ *      after its 0xEC INSERT_FLAGS event).
+ *   4. Serialize to /tmp/base_limiter.flp.
+ */
+import { parseFLPFile } from "/Users/pronskiy/projects/dawhub/flpdiff/src/index.ts";
+import { serializeFLPProject } from "/Users/pronskiy/projects/dawhub/flpdiff/src/parser/flp-write.ts";
+import { readFileSync, writeFileSync } from "node:fs";
+
+function toAB(b: Buffer): ArrayBuffer {
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+}
+
+const baseBytes = readFileSync(
+  "/Users/pronskiy/projects/dawhub/flpdiff/tests/corpus/re_base/fl25/base_empty.flp",
+);
+const sourceBytes = readFileSync(
+  "/Users/pronskiy/projects/dawhub/flpdiff/tests/corpus/local/junie.flp",
+);
+const base = parseFLPFile(toAB(baseBytes));
+const src = parseFLPFile(toAB(sourceBytes));
+
+// Find junie's master slot 7 (Fruity Limiter) full scope. Slot
+// scope = events between this slot's 0x62 marker and the next 0x62
+// (or 0x93). FL needs more than just (0xC9, 0xD5) — supporting
+// events like 0xD4 (plugin runtime data), 0x9B (?), 0x80 (color),
+// 0x29 (?) are all required for FL to recognise the plugin slot.
+let curInsert = 0;
+let curSlot = 0;
+let inMixer = false;
+let scopeStart = -1;
+let scopeEnd = -1;
+
+for (let i = 0; i < src.events.length; i++) {
+  const ev = src.events[i]!;
+  if (ev.opcode === 0xec) inMixer = true;
+  if (!inMixer) continue;
+
+  if (ev.kind === "u16" && ev.opcode === 0x62) {
+    if (scopeStart >= 0) {
+      // We were in the target slot; this 0x62 closes it.
+      scopeEnd = i;
+      break;
+    }
+    curSlot = ev.value;
+    if (curInsert === 0 && curSlot === 7) {
+      // Found the Limiter slot's opening marker; slot scope events
+      // are everything from i+1 until the next 0x62 / 0x93.
+      scopeStart = i + 1;
+    }
+  }
+  if (ev.opcode === 0x93) {
+    if (scopeStart >= 0) {
+      scopeEnd = i;
+      break;
+    }
+    curInsert++;
+    curSlot = 0;
+  }
+}
+
+if (scopeStart < 0 || scopeEnd < 0) {
+  console.error("could not locate junie master slot 7 scope");
+  process.exit(1);
+}
+
+// Verify it's actually Fruity Limiter at this scope.
+let isLimiter = false;
+for (let i = scopeStart; i < scopeEnd; i++) {
+  const ev = src.events[i]!;
+  if (ev.kind === "blob" && ev.opcode === 0xc9) {
+    let end = ev.payload.byteLength;
+    while (end >= 2 && ev.payload[end - 1] === 0 && ev.payload[end - 2] === 0) end -= 2;
+    if (new TextDecoder("utf-16le").decode(ev.payload.subarray(0, end)) === "Fruity Limiter") {
+      isLimiter = true;
+      break;
+    }
+  }
+}
+if (!isLimiter) {
+  console.error("master slot 7 isn't Fruity Limiter");
+  process.exit(1);
+}
+
+const limiterScope = src.events.slice(scopeStart, scopeEnd);
+console.log(`extracted ${limiterScope.length} events from junie master slot 7 (Limiter):`);
+for (const ev of limiterScope) {
+  console.log(`  0x${ev.opcode.toString(16)} ${ev.kind}` + (ev.kind === "blob" ? ` (${ev.payload.byteLength}B)` : ` = ${ev.value}`));
+}
+
+// Find insert 1's slot 0 scope. Insert 1's events live between the
+// FIRST 0x93 (which closes master) and the SECOND 0x93 (closing
+// insert 1). Within insert 1, find the 0x62 with value=0 (slot 0
+// marker) and inject the Limiter events RIGHT AFTER it (so the
+// plugin events are scoped to slot 0, before the next 0x62).
+const events = [...base.events];
+let insert93Count = 0;
+let insertedAt = -1;
+for (let i = 0; i < events.length; i++) {
+  const ev = events[i]!;
+  if (ev.opcode === 0x93) {
+    insert93Count++;
+    if (insert93Count > 1) break; // past insert 1, give up
+    continue;
+  }
+  if (insert93Count === 1 && ev.kind === "u16" && ev.opcode === 0x62 && ev.value === 0) {
+    insertedAt = i + 1;
+    break;
+  }
+}
+
+if (insertedAt < 0) {
+  console.error("could not find insert 1's 0x62 slot=0 in base_empty.flp");
+  process.exit(1);
+}
+
+// Splice the entire Limiter slot scope right after insert 1's 0x62 0.
+events.splice(insertedAt, 0, ...limiterScope);
+
+const outProj = { ...base, events };
+const outBytes = serializeFLPProject(outProj);
+writeFileSync("/tmp/base_limiter.flp", outBytes);
+console.log(`wrote /tmp/base_limiter.flp (${outBytes.byteLength} bytes)`);
+
+// Verify by re-parsing.
+const verify = parseFLPFile(outBytes.buffer.slice(outBytes.byteOffset, outBytes.byteOffset + outBytes.byteLength) as ArrayBuffer);
+console.log("verification:");
+for (const ins of verify.inserts) {
+  for (const slot of ins.slots ?? []) {
+    if (slot.hasPlugin) {
+      console.log(`  insert ${ins.index} slot ${slot.index}: ${slot.pluginName || slot.internalName}`);
+    }
+  }
+}

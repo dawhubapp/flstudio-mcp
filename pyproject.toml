@@ -28,9 +28,11 @@ classifiers = [
 #   canonical TS parser from `flpdiff` via a Node child_process (decision #21
 #   in MCP-SPEC.md).
 # - `re-harness` is the standalone Python package extracted from
-#   `python/tools/re_harness/` (decision #25, see MCP-SPEC.md). Pinned via
-#   path-dep below so dev edits propagate without a reinstall; production
-#   installs (PyPI / git+) replace the source entry.
+#   `python/tools/re_harness/` (decision #25, see MCP-SPEC.md). The source of
+#   truth for the MCP build is `vendor/re_harness` (synced manually from
+#   `python/tools/re_harness` in the dawhub workspace — see vendor/README.md).
+#   Pinned via path-dep below so dev edits propagate without a reinstall;
+#   production installs (PyPI / git+) replace the source entry.
 dependencies = [
     "mcp>=1.0",
     "pydantic>=2.6",
@@ -42,7 +44,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-re-harness = { path = "../python/tools/re_harness", editable = true }
+re-harness = { path = "vendor/re_harness", editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -77,7 +79,10 @@ src = ["src", "tests"]
 # fl_script/ is deployed verbatim into FL Studio's embedded Python — keep
 # it free of stylistic auto-modifications and lint noise from rules that
 # don't apply (FL's interpreter is older, sandboxed, no contextlib needed).
-extend-exclude = ["**/fl_script/device_*.py"]
+# vendor/ is a manually-synced verbatim copy of python/tools/re_harness from
+# the dawhub workspace — excluded so local reformatting doesn't drift it from
+# the source of truth (see vendor/README.md).
+extend-exclude = ["**/fl_script/device_*.py", "vendor/"]
 
 [tool.ruff.lint]
 select = [

@@ -1,0 +1,113 @@
+{
+  "mappings": [
+    {
+      "category": "metadata",
+      "confidence": "confirmed",
+      "data_type": "utf16le",
+      "discovered_by": [
+        "fl25_0x36_fork_patch"
+      ],
+      "fl_versions": [
+        "25"
+      ],
+      "name": "FL25VersionString",
+      "notes": "FL 25 emits a NUL-terminated UTF-16LE product-version string under opcode 0x36 \u2014 a BYTE-range opcode with a variable-length payload, violating PyFLP's range-based sizing rules. Fork patch in vendor/PyFLP/pyflp/_fl25_overrides.py adds `utf16_zterm` size rule. Regression: tests/test_pyflp_fl25.py::test_fl25_opcode_0x36_decodes_as_one_string_event.",
+      "opcode": 54,
+      "pyflp_status": "partial",
+      "value_range": null
+    },
+    {
+      "category": "metadata",
+      "confidence": "confirmed",
+      "data_type": "uint32",
+      "discovered_by": [
+        "fl25_tempo_decode_regression"
+      ],
+      "fl_versions": [
+        "20",
+        "21",
+        "24",
+        "25"
+      ],
+      "name": "ProjectTempo",
+      "notes": "DWORD+28 event carrying bpm \u00d7 1000 as a uint32 LE. PyFLP has had this mapped as ProjectID.Tempo for years; confirmed still correct on FL 25 once the 0x36 / 0xC0 overrides realign the event stream. Regression: tests/test_pyflp_fl25.py::test_fl25_tempo_decodes_to_120.",
+      "opcode": 156,
+      "pyflp_status": "supported",
+      "value_range": [
+        10000.0,
+        999000.0
+      ]
+    },
+    {
+      "category": "metadata",
+      "confidence": "confirmed",
+      "data_type": "blob",
+      "discovered_by": [
+        "fl25_0xc0_fork_patch"
+      ],
+      "fl_versions": [
+        "25"
+      ],
+      "name": "FL25CompoundProjectProperties",
+      "notes": "FL 25 stores a compound project-properties blob under what PyFLP legacy-mapped as ChannelID._Name. Contents: tempo, loop mode, time signature, pan law, title-adjacent fields, etc. Fork patch routes this to UnknownDataEvent on FL 25+ to unblock parsing; inner structure not yet decoded (FL re-decomposes into individual events on subsequent saves, so the blob is transient). Regression: tests/test_pyflp_fl25.py::test_fl25_base_fixtures_parse.",
+      "opcode": 192,
+      "pyflp_status": "partial",
+      "value_range": null
+    },
+    {
+      "category": "plugin",
+      "confidence": "confirmed",
+      "data_type": "blob",
+      "discovered_by": [
+        "serum_mastervol_sweep_setParamValue",
+        "eq2_full_36param_sweep"
+      ],
+      "fl_versions": [
+        "20",
+        "21",
+        "24",
+        "25"
+      ],
+      "name": "PluginStateData",
+      "notes": "DATA+21 event carrying a plugin's internal state blob (VST or native). For VSTs the blob is the plugin's fxChunk; for native plugins it's FL's typed state. PyFLP knows this as PluginID.Data. Verified empirically via a MasterVol sweep on Serum (channel 1 of tests/corpus/re_base/fl25/base_one_serum.flp): the 0xd5 payload is the only non-save-noise opcode that changes when plugin params change. Plugin params ARE scriptable via plugins.setParamValue(value, paramIndex, index, slotIndex) \u2014 earlier assumption that GUI automation was required was wrong. Note for Serum specifically: the blob's size varies across saves at the same param values (VST-internal session state), which complicates fixed-offset RE; FL's native plugins (e.g. Fruity Parametric EQ 2) likely have more deterministic serialization.\n\nFruity Parametric EQ 2 decoder: see `src/flp_diff/plugins/fruity_eq2.py`. Full 36-parameter byte-offset map reverse-engineered 2026-04-17 via plugins.setParamValue sweeps against insert 13 slot 4 of edz_chords_28.flp. Per-band layout: 4-byte slots, uint16 LE for level/freq/width, uint8 for type/order. Main level uint16 LE at 0x90. Round-trip verified against captured sweep blob.",
+      "opcode": 213,
+      "pyflp_status": "partial",
+      "value_range": null
+    },
+    {
+      "category": "mixer",
+      "confidence": "confirmed",
+      "data_type": "blob",
+      "discovered_by": [
+        "fl25_mixer_sparse_packing"
+      ],
+      "fl_versions": [
+        "20",
+        "21",
+        "24",
+        "25"
+      ],
+      "name": "MixerParams",
+      "notes": "DATA+33 event carrying a list of (channel_data << 6, slot, msg, ...) mixer parameters. PyFLP knows this as MixerID.Params and decodes it fine, BUT the channel_data bit-packing is sparse on FL 25 \u2014 most insert indices don't get populated. Fork patch in vendor/PyFLP/pyflp/mixer.py uses `defaultdict(_InsertItems)` so Insert objects iterate cleanly without KeyError on missing entries. Regression: tests/test_pyflp_fl25.py::test_fl25_mixer_iteration_does_not_keyerror.",
+      "opcode": 225,
+      "pyflp_status": "partial",
+      "value_range": null
+    },
+    {
+      "category": "metadata",
+      "confidence": "probable",
+      "data_type": "blob",
+      "discovered_by": [
+        "scratch_vs_scratch_tempo_120_120_sweep"
+      ],
+      "fl_versions": [
+        "25"
+      ],
+      "name": "TimeSpentSaveCounter",
+      "notes": "Observed empirically on 2026-04-17: a scratch-vs-scratch sweep of two saves at the SAME tempo (120 \u2192 120) showed only two opcodes changing \u2014 0xc0 (compound blob, only when still in that form) and 0xf2 (28-byte payload, middle 5 bytes differ between saves). The differing bytes look like a float64 \u2014 likely FL's per-session time-spent or save-counter. Probable save-noise; filter from diff signal. Needs triangulation sweep to confirm semantics.",
+      "opcode": 242,
+      "pyflp_status": "missing",
+      "value_range": null
+    }
+  ]
+}

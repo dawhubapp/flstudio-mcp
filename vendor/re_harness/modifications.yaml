@@ -1,0 +1,99 @@
+modifications:
+- id: tempo_140_to_145
+  category: metadata
+  description: Change project tempo from 140 BPM to 145 BPM.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_empty.flp
+  script_commands:
+  - set_tempo 145.0
+  expected_change: Single WORD event payload changes value 140*100 -> 145*100
+  fl_versions: []
+  tags:
+  - priority:p1
+- id: channel_0_volume_50_to_80
+  category: channel
+  description: Raise channel 0 volume from 50% to 80%.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_one_channel.flp
+  script_commands:
+  - select_channel 0
+  - set_volume 0.8
+  expected_change: One DWORD event near channel-0 block
+  fl_versions: []
+  tags:
+  - priority:p1
+- id: insert_1_rename_to_drums
+  category: mixer
+  description: Rename mixer insert 1 to 'Drums'.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_one_insert.flp
+  script_commands:
+  - select_insert 1
+  - set_name 'Drums'
+  expected_change: One DATA (TEXT) event carrying utf-16le 'Drums'
+  fl_versions: []
+  tags:
+  - priority:p1
+- id: pattern_1_add_note_c5_b1
+  category: pattern
+  description: Add a C5 note at beat 1 in pattern 1.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_one_pattern.flp
+  script_commands:
+  - select_pattern 1
+  - add_note C5 0 96 100
+  expected_change: Pattern notes DATA event grows by one note struct
+  fl_versions: []
+  tags:
+  - priority:p1
+- id: automation_add_keyframe
+  category: automation
+  description: Add an automation keyframe on channel 0 volume.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_one_channel.flp
+  script_commands:
+  - select_channel 0
+  - add_automation_point volume 96 0.7
+  expected_change: Automation DATA event grows
+  fl_versions: []
+  tags:
+  - priority:p2
+- id: playlist_add_clip
+  category: arrangement
+  description: Place pattern 1 clip on track 1 at position 0.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_one_pattern.flp
+  script_commands:
+  - select_track 1
+  - add_pattern_clip 1 0 192
+  expected_change: Playlist DATA event grows by one clip struct
+  fl_versions: []
+  tags:
+  - priority:p1
+- id: eq2_band_3_freq_2400_to_3100
+  category: plugin
+  description: 'Fruity Parametric EQ 2: change band 3 frequency from 2400Hz to 3100Hz.'
+  method: ui_automation
+  base_flp: tests/corpus/re_base/fl25/base_one_insert.flp
+  script_commands:
+  - ui.open_slot 1 1
+  - ui.eq2_set_band_freq 3 3100
+  expected_change: Inside the EQ2 plugin state DATA blob, 4 bytes at band-3 freq offset
+    change
+  fl_versions: []
+  tags:
+  - priority:p1
+  - plugin:eq2
+- id: fl25_new_channel_event
+  category: fl_version_specific
+  description: Capture any FL25-only channel events emitted when a Sampler is created.
+  method: midi_script
+  base_flp: tests/corpus/re_base/fl25/base_empty.flp
+  script_commands:
+  - add_channel Sampler
+  expected_change: Net new opcode(s) unseen in FL 24 catalog runs
+  fl_versions:
+  - '25'
+  tags:
+  - priority:p1
+

@@ -1,3 +1,8 @@
+# vendor/ is a manually-synced verbatim copy of python/tools/re_harness from
+# the dawhub workspace — excluded so these hooks don't drift it from the
+# source of truth (see vendor/README.md).
+exclude: ^vendor/
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "re-harness"
+version = "0.1.0"
+description = "FL Studio reverse-engineering harness — IPC bridge to FL's MIDI scripting + AppleScript autodrive"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Roman Pronskiy", email = "roman@pronskiy.com" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# pyautogui is only needed for autodrive.py (AppleScript fallback for
+# operations not exposed via the menu API). Most callers don't need it.
+dependencies = []
+
+[project.optional-dependencies]
+autodrive = [
+    "pyautogui>=0.9.54",
+]
+
+[project.urls]
+Homepage = "https://github.com/pronskiy/dawhub"
+Repository = "https://github.com/pronskiy/dawhub"
+
+# Flat layout: this directory IS the re_harness package. setuptools picks
+# up all .py files alongside this pyproject and ships them as the
+# `re_harness` package.
+[tool.setuptools]
+packages = ["re_harness"]
+package-dir = { "re_harness" = "." }
+
+[tool.setuptools.package-data]
+re_harness = ["registry.json", "modifications.yaml"]
+
+[tool.setuptools.exclude-package-data]
+# fl_script/ is bundled separately with each consumer (flpdiff Python
+# tests + flstudio-mcp), so it's intentionally excluded from this wheel.
+re_harness = ["fl_script/*", "__pycache__/*", "*.pyc"]
