@@ -9,7 +9,7 @@ result.
 Usage:
     cd mcp && uv run python scripts/build_factory_preset_manifest.py
     cd mcp && uv run python scripts/build_factory_preset_manifest.py \\
-        --fl-app "/Applications/FL Studio 2025.app" \\
+        --fl-app "/Applications/FL Studio 2026.app" \\
         --output data/factory_presets/fl-25.4.4.json
 
 Per D-63c (size_bytes only — no last_modified). Per F9.3.1.
@@ -24,13 +24,13 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from flstudio_mcp.fl_app import resolve_fl_app
 from flstudio_mcp.preset_browser import (
     DEFAULT_PRESET_MANIFEST_DIR,
     _classify,
 )
 from flstudio_mcp.sample_browser import (
     DEFAULT_FACTORY_TOKEN,
-    DEFAULT_FL_APP,
     detect_fl_version,
 )
 
@@ -86,8 +86,8 @@ def main() -> int:
     parser.add_argument(
         "--fl-app",
         type=Path,
-        default=DEFAULT_FL_APP,
-        help="FL Studio .app bundle path (default: %(default)s)",
+        default=None,
+        help="FL Studio .app bundle path (default: newest /Applications/FL Studio N.app)",
     )
     parser.add_argument(
         "--output",
@@ -103,7 +103,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    payload = build_manifest(args.fl_app)
+    payload = build_manifest(resolve_fl_app(args.fl_app))
     print(
         f"[builder] fl_version={payload['fl_version']!r} presets={payload['count']}",
         file=sys.stderr,

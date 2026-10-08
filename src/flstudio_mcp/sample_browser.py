@@ -36,13 +36,14 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .fl_app import resolve_fl_app
+
 # Resolve the bundled manifest dir relative to the package:
 #   mcp/src/flstudio_mcp/sample_browser.py
 #   mcp/data/factory_samples/fl-<version>.json
 _PKG_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_MANIFEST_DIR = _PKG_ROOT / "data" / "factory_samples"
 
-DEFAULT_FL_APP = Path("/Applications/FL Studio 2025.app")
 DEFAULT_FACTORY_TOKEN = "%FLStudioFactoryData%"
 
 
@@ -59,12 +60,12 @@ class SampleEntry:
     size_bytes: int
 
 
-def detect_fl_version(fl_app: Path = DEFAULT_FL_APP) -> str | None:
+def detect_fl_version(fl_app: Path | None = None) -> str | None:
     """Read FL's bundle Info.plist to extract `CFBundleShortVersionString`.
 
     Returns None if the app isn't installed or plist is unreadable.
     """
-    plist_path = fl_app / "Contents" / "Info.plist"
+    plist_path = resolve_fl_app(fl_app) / "Contents" / "Info.plist"
     if not plist_path.is_file():
         return None
     try:
@@ -183,7 +184,7 @@ def enumerate_factory_samples(
     category: str | None = None,
     query: str | None = None,
     force_walk: bool = False,
-    fl_app: Path = DEFAULT_FL_APP,
+    fl_app: Path | None = None,
 ) -> list[SampleEntry]:
     """Return factory samples filtered by category + filename query.
 
@@ -196,6 +197,7 @@ def enumerate_factory_samples(
     further).
     """
     limit = max(1, min(limit, 500))
+    fl_app = resolve_fl_app(fl_app)
 
     if force_walk:
         root = install_root or (fl_app / "Contents" / "Resources" / "FL" / "Data")

@@ -7,7 +7,7 @@ needed (FL minor updates, new packs installed). Commit the result.
 Usage:
     cd mcp && uv run python scripts/build_factory_sample_manifest.py
     cd mcp && uv run python scripts/build_factory_sample_manifest.py \
-        --fl-app "/Applications/FL Studio 2025.app" \
+        --fl-app "/Applications/FL Studio 2026.app" \
         --output data/factory_samples/fl-25.4.4.json
 
 Per D-61d. Per F7.1.5a.
@@ -21,9 +21,9 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from flstudio_mcp.fl_app import resolve_fl_app
 from flstudio_mcp.sample_browser import (
     DEFAULT_FACTORY_TOKEN,
-    DEFAULT_FL_APP,
     DEFAULT_MANIFEST_DIR,
     detect_fl_version,
 )
@@ -70,8 +70,8 @@ def main() -> int:
     parser.add_argument(
         "--fl-app",
         type=Path,
-        default=DEFAULT_FL_APP,
-        help="FL Studio .app bundle path (default: %(default)s)",
+        default=None,
+        help="FL Studio .app bundle path (default: newest /Applications/FL Studio N.app)",
     )
     parser.add_argument(
         "--output",
@@ -87,7 +87,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    payload = build_manifest(args.fl_app)
+    payload = build_manifest(resolve_fl_app(args.fl_app))
     print(
         f"[builder] fl_version={payload['fl_version']!r} samples={payload['count']}",
         file=sys.stderr,

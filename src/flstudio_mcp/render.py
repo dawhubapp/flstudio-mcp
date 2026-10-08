@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -31,10 +30,18 @@ from typing import Any, Literal, Protocol
 
 import soundfile as sf
 
+from .fl_app import FL_APP_ENV, resolve_fl_app
 from .logging_setup import get_logger
 
-APPLICATIONS = Path("/Applications")
-FL_APP_ENV = "FLSTUDIO_MCP_FL_APP"
+__all__ = [
+    "FL_APP_ENV",
+    "RenderCache",
+    "RenderError",
+    "RenderResult",
+    "render_to_wav",
+    "resolve_fl_app",
+]
+
 CACHE_DIR_ENV = "FLSTUDIO_MCP_RENDER_CACHE"
 DEFAULT_CACHE_DIR = Path.home() / "Library" / "Caches" / "flstudio-mcp" / "renders"
 DEFAULT_CACHE_CAP_BYTES = 2 * 1024**3
@@ -43,7 +50,6 @@ STABLE_S = 2.0
 POLL_S = 0.25
 RENDER_STEM = "render"
 FL_PROCESS = "OsxFL"
-_FL_APP_RE = re.compile(r"^FL Studio (\d+)\.app$")
 
 # Set by the F11.0.1 spike: True only if a CLI render alongside an open FL
 # session was observed to leave that session untouched.
@@ -119,24 +125,6 @@ def _default_kill_fl() -> None:
     if _fl_process_alive():
         subprocess.run(["pkill", "-9", "-x", FL_PROCESS], check=False, capture_output=True)
         time.sleep(1.0)
-
-
-def resolve_fl_app(fl_app: Path | None = None) -> Path:
-    """Explicit path, else ``FLSTUDIO_MCP_FL_APP``, else the newest /Applications/FL Studio N.app."""
-    if fl_app is not None:
-        return fl_app
-    env = os.environ.get(FL_APP_ENV)
-    if env:
-        return Path(env)
-    installed = sorted(
-        (
-            (int(m.group(1)), path)
-            for path in APPLICATIONS.glob("FL Studio *.app")
-            if (m := _FL_APP_RE.match(path.name))
-        ),
-        reverse=True,
-    )
-    return installed[0][1] if installed else APPLICATIONS / "FL Studio.app"
 
 
 def build_render_argv(fl_app: Path, flp: Path) -> list[str]:

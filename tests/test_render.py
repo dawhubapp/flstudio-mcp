@@ -15,7 +15,6 @@ from flstudio_mcp.render import (
     RenderError,
     build_render_argv,
     render_to_wav,
-    resolve_fl_app,
 )
 
 
@@ -96,25 +95,6 @@ def test_build_render_argv(tmp_path: Path) -> None:
     assert build_render_argv(Path("/A/FL.app"), Path("/t/render.flp")) == [
         "open", "-W", "-a", "/A/FL.app", "--args", "-R", "-Ewav", "/t/render.flp",
     ]  # fmt: skip
-
-
-def test_resolve_fl_app_picks_newest_install(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    for name in ("FL Studio 21.app", "FL Studio 2025.app", "FL Studio 2026.app", "FL Cloud.app"):
-        (tmp_path / name).mkdir()
-    monkeypatch.setattr(render, "APPLICATIONS", tmp_path)
-    monkeypatch.delenv(render.FL_APP_ENV, raising=False)
-    assert resolve_fl_app() == tmp_path / "FL Studio 2026.app"
-    assert resolve_fl_app(Path("/x.app")) == Path("/x.app")
-
-
-def test_resolve_fl_app_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(render, "APPLICATIONS", tmp_path)  # empty
-    monkeypatch.setenv(render.FL_APP_ENV, "/Volumes/X/FL Studio 2026.app")
-    assert resolve_fl_app() == Path("/Volumes/X/FL Studio 2026.app")
-    monkeypatch.delenv(render.FL_APP_ENV)
-    assert not resolve_fl_app().exists()  # nothing installed -> FL_APP_NOT_FOUND later
 
 
 def test_render_then_cache_hit(setup) -> None:

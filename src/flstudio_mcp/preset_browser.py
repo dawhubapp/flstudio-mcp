@@ -57,9 +57,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
+from .fl_app import resolve_fl_app
 from .sample_browser import (
     DEFAULT_FACTORY_TOKEN,
-    DEFAULT_FL_APP,
     detect_fl_version,
 )
 
@@ -240,7 +240,7 @@ def enumerate_factory_presets(
     kind: PresetKind | None = None,
     query: str | None = None,
     force_walk: bool = False,
-    fl_app: Path = DEFAULT_FL_APP,
+    fl_app: Path | None = None,
 ) -> list[PresetEntry]:
     """Return factory plugin presets filtered by plugin name + kind +
     preset-name query.
@@ -256,6 +256,7 @@ def enumerate_factory_presets(
     Defaults: limit=100, max=500 (caller clamps further if needed).
     """
     limit = max(1, min(limit, 500))
+    fl_app = resolve_fl_app(fl_app)
 
     if force_walk:
         root = install_root or (fl_app / "Contents" / "Resources" / "FL" / "Data")
