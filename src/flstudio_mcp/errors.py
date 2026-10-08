@@ -78,8 +78,8 @@ _DEFAULT_HINTS: dict[ErrorCode, str] = {
         "Install FL Studio, or set FLSTUDIO_MCP_FL_APP to the FL Studio .app path."
     ),
     ErrorCode.FL_BUSY: (
-        "FL Studio is open. Save and quit FL, then retry — rendering starts its own "
-        "headless FL instance."
+        "FL Studio is open. Save and quit FL, then retry — rendering opens its own FL "
+        "session and drives File > Export."
     ),
     ErrorCode.RENDER_TIMEOUT: (
         "FL didn't finish rendering in time. A dialog (license, missing plugin or "

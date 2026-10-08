@@ -87,7 +87,7 @@ def execute(
             started,
             ToolError(ErrorCode.INVALID_ARGS, "args.path must be an existing .flp file"),
         )
-    _LOG.info("render_to_wav start (FL launches headless, ~30-90 s)", extra={"log_id": log_id})
+    _LOG.info("render_to_wav start (FL export, ~20-60 s)", extra={"log_id": log_id})
     try:
         result = renderer(Path(path), force=bool(args.get("force", False)))
     except render_mod.RenderError as exc:
@@ -126,10 +126,10 @@ def register(
     @server.tool(
         name=TOOL_NAME,
         description=(
-            "Render a .flp to WAV with FL Studio's command-line render. FL launches "
-            "headless on a temp copy (~30-90 s cold); results are cached by file hash, "
-            "so re-rendering an unchanged file is instant. Refuses with FL_BUSY while "
-            "FL Studio is open. With analyze=true (default) also returns audio metrics "
+            "Render a .flp's whole song to WAV. Opens a temp copy in FL Studio and "
+            "drives File > Export (FL takes over the screen for ~20-60 s); results are "
+            "cached by file hash, so re-rendering an unchanged file is instant. Refuses "
+            "with FL_BUSY while FL Studio is open. With analyze=true (default) also returns audio metrics "
             "(peak, loudness, silent gaps, per-section level and sub/low/mid/high "
             "balance) and issues. Render once after composing, not after every edit. "
             "Returns {ok, kind, result: {wav_path, duration_s, file_size, "

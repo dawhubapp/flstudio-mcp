@@ -98,12 +98,15 @@ def _default_launcher(argv: list[str]) -> Launched:
 
 
 def _default_is_fl_running() -> bool:
+    """pgrep first: if the AppleScript process list fails we must still see FL."""
+    if _fl_process_alive():
+        return True
     from .installer.verify import detect_fl_processes
 
     return bool(detect_fl_processes())
 
 
-def _fl_pids() -> bool:
+def _fl_process_alive() -> bool:
     return subprocess.run(["pgrep", "-x", FL_PROCESS], capture_output=True).returncode == 0
 
 
@@ -111,9 +114,9 @@ def _default_kill_fl() -> None:
     """Stop the FL we launched and wait until it's gone (a half-dead FL breaks the next launch)."""
     subprocess.run(["pkill", "-x", FL_PROCESS], check=False, capture_output=True)
     deadline = time.monotonic() + 10.0
-    while _fl_pids() and time.monotonic() < deadline:
+    while _fl_process_alive() and time.monotonic() < deadline:
         time.sleep(POLL_S)
-    if _fl_pids():
+    if _fl_process_alive():
         subprocess.run(["pkill", "-9", "-x", FL_PROCESS], check=False, capture_output=True)
         time.sleep(1.0)
 

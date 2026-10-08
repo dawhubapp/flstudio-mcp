@@ -120,3 +120,11 @@ def test_render_shorter_than_arrangement_is_an_error(tmp_path: Path, flp: Path) 
     )
     errors = [i for i in env["result"]["issues"] if i["severity"] == "error"]
     assert any("pattern mode" in i["message"] for i in errors), env["result"]["issues"]
+
+
+@pytest.mark.anyio
+async def test_tool_description_warns_about_screen_takeover() -> None:
+    server = build_server(install_result=[])
+    tool = next(t for t in await server.list_tools() if t.name == "render_to_wav")
+    assert "takes over the screen" in tool.description
+    assert "headless" not in tool.description

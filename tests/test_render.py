@@ -299,3 +299,16 @@ def test_song_mode_without_wav_is_render_failed(setup) -> None:
     with pytest.raises(RenderError) as exc:
         _song(setup, FakeExportUi(write=False))
     assert exc.value.code == "RENDER_FAILED"
+
+
+def test_fl_running_detection_trusts_pgrep(monkeypatch: pytest.MonkeyPatch) -> None:
+    # If the AppleScript process list fails (returns []), a running FL must
+    # still be seen — otherwise song mode would open our project in the
+    # user's FL and then kill it.
+    import flstudio_mcp.installer.verify as verify
+
+    monkeypatch.setattr(verify, "detect_fl_processes", lambda: [])
+    monkeypatch.setattr(render, "_fl_process_alive", lambda: True)
+    assert render._default_is_fl_running() is True
+    monkeypatch.setattr(render, "_fl_process_alive", lambda: False)
+    assert render._default_is_fl_running() is False
