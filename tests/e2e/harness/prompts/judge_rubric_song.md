@@ -29,8 +29,10 @@ user requested.
 Grade on a **1–5 scale**:
 
 - **5** — All hard invariants pass. Notes added are musically sensible
-  for the requested role (bass in low register C2..C4, melody in
-  C5..C6, etc.), positioned cleanly on PPQ-aligned grid (no random
+  for the requested role (plugin-synth bass around keys 28..55, melody
+  around 60..84 — key 60 is middle C, which FL labels "C5"; sampler
+  channels play the sample's own pitch, so don't judge their register
+  from key numbers), positioned cleanly on PPQ-aligned grid (no random
   off-beat placement unless asked), with reasonable velocities.
   New channels/patterns (if created) have meaningful names. Plugin
   parameter changes (if any) are within plausible musical ranges.
