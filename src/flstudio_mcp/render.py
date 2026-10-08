@@ -1,10 +1,18 @@
-"""Render an FLP to WAV through FL Studio's command-line render (F7.2).
+"""Render an FLP to WAV with FL Studio (F7.2).
 
-FL always renders a temp copy, so FL's file lock never touches the user's
-file. If FL is already running we refuse with ``FL_BUSY`` unless the
-F11.0.1 spike proved a parallel render leaves the open session alone
-(``RENDER_WHILE_RUNNING_SAFE``); either way we never kill an FL we didn't
-start. ``build_render_argv`` is the single place the CLI flags live.
+Two modes, both on a temp copy so FL's file lock never touches the user's
+file:
+
+- ``song`` (default): FL's File > Export > Wave file... in Song mode, driven
+  through System Events (``AutodriveExportUi``). The F11.0.1 spike found
+  that FL's command-line render always renders the current *pattern*, and
+  no flag or saved-project state switches it to the song.
+- ``pattern``: FL's command-line render (``-R -Ewav``). Headless-ish and
+  fine for one-pattern renders such as kit-sound checks.
+
+If FL is already running we refuse with ``FL_BUSY`` (song mode always;
+pattern mode unless ``RENDER_WHILE_RUNNING_SAFE``); either way we never
+kill an FL we didn't start.
 """
 
 from __future__ import annotations
@@ -44,7 +52,8 @@ RENDER_WHILE_RUNNING_SAFE = False
 _LOG = get_logger("render")
 
 RenderErrorCode = Literal["FL_APP_NOT_FOUND", "FL_BUSY", "RENDER_TIMEOUT", "RENDER_FAILED"]
-Outcome = Literal["exited", "stable", "cached"]
+Outcome = Literal["exited", "stable", "exported", "cached"]
+RenderMode = Literal["song", "pattern"]
 
 
 class RenderError(Exception):
@@ -94,8 +103,19 @@ def _default_is_fl_running() -> bool:
     return bool(detect_fl_processes())
 
 
+def _fl_pids() -> bool:
+    return subprocess.run(["pgrep", "-x", FL_PROCESS], capture_output=True).returncode == 0
+
+
 def _default_kill_fl() -> None:
+    """Stop the FL we launched and wait until it's gone (a half-dead FL breaks the next launch)."""
     subprocess.run(["pkill", "-x", FL_PROCESS], check=False, capture_output=True)
+    deadline = time.monotonic() + 10.0
+    while _fl_pids() and time.monotonic() < deadline:
+        time.sleep(POLL_S)
+    if _fl_pids():
+        subprocess.run(["pkill", "-9", "-x", FL_PROCESS], check=False, capture_output=True)
+        time.sleep(1.0)
 
 
 def resolve_fl_app(fl_app: Path | None = None) -> Path:
@@ -130,8 +150,8 @@ class RenderCache:
         self.cap_bytes = cap_bytes
 
     @staticmethod
-    def key_for(flp_bytes: bytes) -> str:
-        return hashlib.sha256(flp_bytes).hexdigest()
+    def key_for(flp_bytes: bytes, mode: RenderMode = "song") -> str:
+        return hashlib.sha256(flp_bytes + b"\0" + mode.encode()).hexdigest()
 
     def _path(self, key: str) -> Path:
         return self.root / f"{key}.wav"
@@ -163,6 +183,119 @@ class RenderCache:
                 continue
             total -= path.stat().st_size
             path.unlink(missing_ok=True)
+
+
+class ExportUi(Protocol):
+    def render_song(self, flp: Path, *, timeout_s: float) -> None: ...
+
+
+class AutodriveExportUi:
+    """FL's File > Export > Wave file... in Song mode, via System Events (F11.0.1).
+
+    Opens ``flp`` in a fresh FL, turns off Options > 'Typing keyboard to
+    piano' (otherwise L plays a note), presses L (FL opens projects in
+    Pattern mode), exports through the native Save panel (it defaults to
+    ``<flp dir>/<flp stem>.wav``), starts the render with Return and waits
+    for the WAV. The piano-typing preference is restored before returning.
+    """
+
+    MENU_PIANO = (
+        'menu item "Typing keyboard to piano" of menu 1 of menu bar item "Options" of menu bar 1'
+    )
+    MENU_EXPORT_WAV = (
+        'menu item "Wave file..." of menu 1 of menu item "Export" of menu 1 '
+        'of menu bar item "File" of menu bar 1'
+    )
+    MENU_WELCOME = (
+        'menu item "Welcome to FL Studio" of menu 1 of menu bar item "View" of menu bar 1'
+    )
+    MENU_CLOSE_PLUGINS = (
+        'menu item "Close all plugin windows" of menu 1 of menu bar item "View" of menu bar 1'
+    )
+    SAVE_PANEL = 'splitter group 1 of window "Save"'
+
+    def __init__(self, fl_app: Path, *, process: str = FL_PROCESS) -> None:
+        self.fl_app = fl_app
+        self.tell = f'tell application "System Events" to tell process "{process}"'
+
+    def _osa(self, script: str) -> str:
+        proc = subprocess.run(
+            ["osascript", "-e", f"{self.tell} to {script}"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        return proc.stdout.strip()
+
+    def _checked(self, menu_item: str) -> bool:
+        mark = self._osa(f'get value of attribute "AXMenuItemMarkChar" of {menu_item}')
+        return mark not in ("", "missing value")
+
+    def _windows(self) -> str:
+        return self._osa("get name of every window")
+
+    def _wait(self, ready: Callable[[], bool], timeout_s: float, what: str) -> None:
+        deadline = time.monotonic() + timeout_s
+        while not ready():
+            if time.monotonic() >= deadline:
+                raise RenderError(
+                    "RENDER_TIMEOUT",
+                    f"timed out waiting for {what} (FL windows: {self._windows() or 'none'})",
+                )
+            time.sleep(POLL_S)
+
+    def render_song(self, flp: Path, *, timeout_s: float) -> None:
+        from re_harness import autodrive
+
+        wav = flp.with_suffix(".wav")
+        deadline = time.monotonic() + timeout_s
+        subprocess.run(["open", "-a", str(self.fl_app), str(flp)], check=False, capture_output=True)
+        # The project window is titled "<project> - FL Studio <N>"; the splash isn't.
+        self._wait(lambda: " - FL Studio" in self._windows(), 90.0, "FL to open the project")
+        time.sleep(5.0)  # let plugins finish loading
+        autodrive.dismiss_modals()
+        # Generator plugins may open their editor windows on load; they take
+        # keyboard focus and would swallow the L keystroke.
+        self._osa(f"click {self.MENU_CLOSE_PLUGINS}")
+        time.sleep(0.5)
+        # FL shows its welcome screen on every launch (a killed FL never saves
+        # "don't show again"); it also steals focus.
+        if self._checked(self.MENU_WELCOME):
+            self._osa(f"click {self.MENU_WELCOME}")
+            time.sleep(0.5)
+        autodrive.activate_fl_studio()
+        _LOG.info("render_song ready", extra={"windows": self._windows()})
+        piano_on_bool = self._checked(self.MENU_PIANO)
+        try:
+            if piano_on_bool:
+                self._osa(f"click {self.MENU_PIANO}")
+                time.sleep(0.5)
+            self._osa('keystroke "l"')  # Pattern -> Song mode
+            time.sleep(1.0)
+            _LOG.info("render_song export", extra={"piano_was_on": piano_on_bool})
+            self._osa(f"click {self.MENU_EXPORT_WAV}")
+            self._wait(lambda: "Save" in self._windows().split(", "), 20.0, "the export Save panel")
+            self._osa(f'click (first button of {self.SAVE_PANEL} whose title is "Save")')
+            self._wait(lambda: "Rendering to" in self._windows(), 20.0, "FL's render window")
+            self._osa(
+                'perform action "AXRaise" of (first window whose name starts with "Rendering to")'
+            )
+            time.sleep(0.3)
+            self._osa("keystroke return")  # Start
+            remaining = max(5.0, deadline - time.monotonic())
+            self._wait(
+                lambda: (
+                    wav.is_file()
+                    and wav.stat().st_size > 1000
+                    and "Rendering" not in self._windows()
+                ),
+                remaining,
+                "the render to finish",
+            )
+        finally:
+            if piano_on_bool:
+                self._osa(f"click {self.MENU_PIANO}")
 
 
 def _wait_for_output(
@@ -210,10 +343,12 @@ def _result(path: Path, *, walltime: float, outcome: Outcome) -> RenderResult:
 def render_to_wav(
     flp_path: Path,
     *,
+    mode: RenderMode = "song",
     timeout_s: float = DEFAULT_TIMEOUT_S,
     fl_app: Path | None = None,
     cache: RenderCache | None = None,
     force: bool = False,
+    export_ui: ExportUi | None = None,
     launcher: Launcher | None = None,
     is_fl_running: Callable[[], bool] | None = None,
     kill_fl: Callable[[], None] | None = None,
@@ -224,7 +359,7 @@ def render_to_wav(
     flp_path = Path(flp_path)
     data = flp_path.read_bytes()
     cache = cache or RenderCache()
-    key = cache.key_for(data)
+    key = cache.key_for(data, mode)
     if not force:
         hit = cache.get(key)
         if hit is not None:
@@ -234,9 +369,28 @@ def render_to_wav(
     if not app.exists():
         raise RenderError("FL_APP_NOT_FOUND", f"{app} not found")
     already_running = (is_fl_running or _default_is_fl_running)()
-    if already_running and not RENDER_WHILE_RUNNING_SAFE:
+    if already_running and (mode == "song" or not RENDER_WHILE_RUNNING_SAFE):
         raise RenderError("FL_BUSY", "FL Studio is already running")
     owns_fl = not already_running
+
+    if mode == "song":
+        ui = export_ui or AutodriveExportUi(app)
+        with tempfile.TemporaryDirectory(prefix="flstudio-mcp-render-") as tmp:
+            tmp_flp = Path(tmp) / f"{RENDER_STEM}.flp"
+            tmp_flp.write_bytes(data)
+            wav = tmp_flp.with_suffix(".wav")
+            _LOG.info("render start (song export)", extra={"flp": str(flp_path)})
+            started = clock()
+            try:
+                ui.render_song(tmp_flp, timeout_s=timeout_s)
+            finally:
+                (kill_fl or _default_kill_fl)()  # owns_fl: FL_BUSY guarantees it's ours
+            walltime = clock() - started
+            if not wav.is_file() or wav.stat().st_size == 0:
+                raise RenderError("RENDER_FAILED", f"FL's export didn't write {wav.name}")
+            dst = cache.put(key, wav)
+        _LOG.info("render done", extra={"wav": str(dst), "walltime_s": round(walltime, 1)})
+        return _result(dst, walltime=walltime, outcome="exported")
 
     with tempfile.TemporaryDirectory(prefix="flstudio-mcp-render-") as tmp:
         tmp_flp = Path(tmp) / f"{RENDER_STEM}.flp"

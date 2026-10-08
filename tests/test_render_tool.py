@@ -111,3 +111,12 @@ async def test_server_registers_render_tool() -> None:
     server = build_server(install_result=[])
     names = {t.name for t in await server.list_tools()}
     assert "render_to_wav" in names and "offline_execute" in names
+
+
+def test_render_shorter_than_arrangement_is_an_error(tmp_path: Path, flp: Path) -> None:
+    rt = FakeOfflineRuntime(response=BridgeResponse(ok=True, kind="describe", result=good_house()))
+    env = render_tool.execute(
+        {"path": str(flp)}, renderer=_renderer(tmp_path, seconds=6.5), runtime_factory=lambda: rt
+    )
+    errors = [i for i in env["result"]["issues"] if i["severity"] == "error"]
+    assert any("pattern mode" in i["message"] for i in errors), env["result"]["issues"]

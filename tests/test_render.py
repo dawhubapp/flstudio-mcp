@@ -87,7 +87,7 @@ def _render(setup, launcher, **kw):
         kill_fl=lambda: kills.append(1),
         clock=clock,
         sleep=clock.sleep,
-        **kw,
+        **({"mode": "pattern"} | kw),
     )
     return result, kills
 
@@ -192,6 +192,7 @@ def test_timeout_calls_kill(setup) -> None:
         render_to_wav(
             flp, fl_app=app, cache=cache, launcher=launcher, is_fl_running=lambda: False,
             kill_fl=lambda: kills.append(1), clock=clock, sleep=clock.sleep, timeout_s=5.0,
+            mode="pattern",
         )  # fmt: skip
     assert kills == [1] and launcher.proc is not None and launcher.proc.terminated
 
@@ -221,3 +222,80 @@ def test_cache_prune_keeps_newest(tmp_path: Path) -> None:
 def test_error_codes_exist() -> None:
     for code in ("FL_APP_NOT_FOUND", "FL_BUSY", "RENDER_TIMEOUT", "RENDER_FAILED"):
         assert ErrorCode(code).value == code
+
+
+# ------------------------------------------------------------- song mode #
+
+
+class FakeExportUi:
+    """Stands in for FL's File > Export flow: writes <flp>.wav like FL does."""
+
+    def __init__(self, *, write: bool = True, error: RenderError | None = None) -> None:
+        self.write = write
+        self.error = error
+        self.calls: list[tuple[Path, float]] = []
+
+    def render_song(self, flp: Path, *, timeout_s: float) -> None:
+        self.calls.append((flp, timeout_s))
+        if self.error is not None:
+            raise self.error
+        if self.write:
+            sf.write(str(flp.with_suffix(".wav")), np.zeros(88200, dtype=np.float32) + 0.1, 44100)
+
+
+def _song(setup, ui, **kw):
+    app, flp, cache = setup
+    kills: list[int] = []
+    result = render_to_wav(
+        flp,
+        fl_app=app,
+        cache=cache,
+        export_ui=ui,
+        is_fl_running=kw.pop("is_fl_running", lambda: False),
+        kill_fl=lambda: kills.append(1),
+        **kw,
+    )
+    return result, kills
+
+
+def test_song_mode_is_the_default_and_closes_our_fl(setup) -> None:
+    _app, flp, cache = setup
+    ui = FakeExportUi()
+    result, kills = _song(setup, ui)
+    assert result.outcome == "exported" and result.cached is False
+    assert result.duration_s == pytest.approx(2.0, abs=0.01)
+    assert result.wav_path.parent == cache.root
+    rendered_flp, _timeout = ui.calls[0]
+    assert rendered_flp.name == "render.flp" and rendered_flp.parent != flp.parent
+    assert kills == [1]
+    again, _ = _song(setup, ui)
+    assert again.cached is True and len(ui.calls) == 1
+
+
+def test_song_and_pattern_renders_are_cached_separately(setup) -> None:
+    ui = FakeExportUi()
+    launcher = FakeLauncher()
+    _song(setup, ui)
+    _render(setup, launcher)  # mode="pattern"
+    assert len(ui.calls) == 1 and len(launcher.argvs) == 1
+
+
+def test_song_mode_fl_busy_never_touches_ui(setup) -> None:
+    ui = FakeExportUi()
+    with pytest.raises(RenderError) as exc:
+        _song(setup, ui, is_fl_running=lambda: True)
+    assert exc.value.code == "FL_BUSY" and ui.calls == []
+
+
+def test_song_mode_ui_failure_still_closes_fl(setup) -> None:
+    ui = FakeExportUi(error=RenderError("RENDER_TIMEOUT", "no render window"))
+    with pytest.raises(RenderError) as exc:
+        _song(setup, ui)
+    assert exc.value.code == "RENDER_TIMEOUT"
+    assert len(ui.calls) == 1
+
+
+def test_song_mode_without_wav_is_render_failed(setup) -> None:
+    with pytest.raises(RenderError) as exc:
+        _song(setup, FakeExportUi(write=False))
+    assert exc.value.code == "RENDER_FAILED"

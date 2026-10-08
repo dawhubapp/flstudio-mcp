@@ -175,6 +175,16 @@ def analyze(
             )
         )
     else:
+        arranged_end = max((s.end_s for s in sections), default=0.0)
+        if duration < arranged_end - 0.25:
+            issues.append(
+                Issue(
+                    "error",
+                    f"render covers {duration:.1f} s but the arrangement runs "
+                    f"{arranged_end:.1f} s: FL rendered in pattern mode, not the song",
+                    hint="Re-render in song mode (render_to_wav's default).",
+                )
+            )
         if clipping > CLIP_RATIO_ERROR:
             issues.append(
                 Issue(
