@@ -1,56 +1,84 @@
 # flstudio-mcp
 
-Model Context Protocol (MCP) server exposing FL Studio project introspection and mutation as LLM tools.
+MCP server for FL Studio. Lets Claude, Cursor, Codex CLI or any other
+Model Context Protocol client read and edit FL Studio projects, either
+live in a running FL Studio or offline from `.flp` files on disk.
 
-> **Status:** v0.1 in development. Spec: [`MCP-SPEC.md`](../MCP-SPEC.md) (in dawhub workspace).
+> **Status: early preview (0.1.0.dev).** macOS + FL Studio 25/26.
+> Tool names, arguments and install steps may still change. A tagged
+> release is coming.
 
-## Overview
+## What it does
 
-`flstudio-mcp` bridges LLM-driven workflows (Claude Desktop, Cursor, Codex CLI) and FL Studio projects via two execution modes:
+Ask for project edits in plain language and the model calls the tools:
 
-- **Live** — commands sent to a running FL Studio 25.x instance over an IPC + MIDI-script harness.
-- **Offline** — `.flp` files read/written without FL, via the canonical TS parser from [`flpdiff`](https://github.com/pronskiy/flpdiff) invoked through Node.
+- *"What's the tempo of the project I have open, and how many channels and patterns does it have?"*
+- *"Build a four-on-the-floor house pattern in the active pattern: kick on every beat, clap on 2 and 4, hats on the off-beats."*
+- *"Crank the tempo up to 175 and rename channel 0 to STAB."* … *"Actually no, undo both."*
 
-Primary use case: AI-assisted music production. Producer chats with an MCP client, asks for project edits in natural language ("set tempo to 128", "rename channel 3 to Kick", "tune the EQ on the bass insert").
+| MCP tool | What it does | Needs FL running |
+|----------|--------------|------------------|
+| `live_execute` | Talks to a running FL Studio over the IAC Driver and a bundled MIDI script: tempo, channels, mixer, patterns, step sequencer, plugin params, mixer EQ, save. Every write takes a snapshot first, so `restore_snapshot` can undo it. | yes (except setup kinds) |
+| `offline_execute` | Reads and edits `.flp` files without FL: notes, controllers, patterns, channels, colors, routing, native plugin params, playlist clips, arrangements, whole-project reorganize. | no |
+| `render_to_wav` | Renders a `.flp` song to WAV through FL and returns loudness, balance and silence metrics. | opens FL itself |
 
-## Platform support (v1)
-
-- macOS only
-- FL Studio 25.x only
-- Python 3.11+
-- Node 18+ (for offline runtime)
+Full reference: [`docs/tools.md`](docs/tools.md). Example conversations:
+[`docs/examples/`](docs/examples/).
 
 ## Install
 
+Requirements: macOS, FL Studio 25.x or 26.x, Python 3.11+,
+[uv](https://docs.astral.sh/uv/).
+
 ```sh
-uvx --from git+https://github.com/<org>/flstudio-mcp flstudio-mcp
+uvx --from git+https://github.com/dawhubapp/flstudio-mcp flstudio-mcp
 ```
 
-(Org TBD — see Phase 1.1.4 in the spec.)
+Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
-Server install ≠ ready to use. You also need to:
+```json
+{
+  "mcpServers": {
+    "flstudio": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/dawhubapp/flstudio-mcp", "flstudio-mcp"]
+    }
+  }
+}
+```
 
-1. Enable the **IAC Driver** in Audio MIDI Setup (one-time).
-2. Wire the auto-installed MIDI script inside FL Studio (Options →
-   MIDI Settings → enable IAC input → set Controller type to
+Installing the server isn't enough on its own. Live mode also needs:
+
+1. The **IAC Driver** enabled in Audio MIDI Setup (one-time).
+2. The auto-installed MIDI script wired inside FL Studio (Options →
+   MIDI Settings → enable the IAC input → set Controller type to
    `flstudio-mcp`).
 
-Full step-by-step: **[`docs/install.md`](docs/install.md)**.
+Offline mode needs the [`flpdiff`](https://github.com/dawhubapp/flpdiff)
+bridge (bun + a flpdiff checkout for now).
+
+Step-by-step for Claude Desktop, Cursor and Codex CLI:
+**[`docs/install.md`](docs/install.md)**.
 
 ## Debugging
 
-Use the MCP Inspector to call tools / resources directly from a browser
-UI: **[`docs/debugging.md`](docs/debugging.md)**.
+Use the MCP Inspector to call tools and resources from a browser UI:
+**[`docs/debugging.md`](docs/debugging.md)**.
 
 ## Development
 
 ```sh
-cd mcp
 uv sync --extra dev
 uv run pytest
 uv run ruff check .
 ```
 
+## Related
+
+- [`flpdiff`](https://github.com/dawhubapp/flpdiff): semantic diff and
+  parser for FL Studio `.flp` files. flstudio-mcp's offline mode runs on
+  its parser and serializer.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

@@ -72,9 +72,9 @@ eval = [
 flstudio-mcp = "flstudio_mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/pronskiy/dawhub"
-Repository = "https://github.com/pronskiy/dawhub"
-Issues = "https://github.com/pronskiy/dawhub/issues"
+Homepage = "https://github.com/dawhubapp/flstudio-mcp"
+Repository = "https://github.com/dawhubapp/flstudio-mcp"
+Issues = "https://github.com/dawhubapp/flstudio-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/flstudio_mcp"]

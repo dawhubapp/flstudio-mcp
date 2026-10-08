@@ -1,14 +1,12 @@
 # flstudio-mcp — install guide
 
-> **Platform:** macOS only. FL Studio 25.x. Python 3.11+.
+> **Platform:** macOS only. FL Studio 25.x or 26.x. Python 3.11+.
 
 ## 1. Install the server
 
 ```sh
-uvx --from git+https://github.com/<org>/flstudio-mcp flstudio-mcp --version
+uvx --from git+https://github.com/dawhubapp/flstudio-mcp flstudio-mcp --version
 ```
-
-(Org TBD — see Open Question 1 in `MCP-SPEC.md`.)
 
 The first non-`--version` invocation auto-installs the bundled MIDI script
 into FL Studio's Hardware directory and prints a one-line stderr notice.
@@ -25,7 +23,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "flstudio": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/<org>/flstudio-mcp", "flstudio-mcp"]
+      "args": ["--from", "git+https://github.com/dawhubapp/flstudio-mcp", "flstudio-mcp"]
     }
   }
 }
@@ -42,7 +40,7 @@ Add to `~/.cursor/mcp.json`:
   "mcpServers": {
     "flstudio": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/<org>/flstudio-mcp", "flstudio-mcp"]
+      "args": ["--from", "git+https://github.com/dawhubapp/flstudio-mcp", "flstudio-mcp"]
     }
   }
 }
@@ -55,7 +53,7 @@ Add to `~/.codex/config.toml`:
 ```toml
 [mcp_servers.flstudio]
 command = "uvx"
-args = ["--from", "git+https://github.com/<org>/flstudio-mcp", "flstudio-mcp"]
+args = ["--from", "git+https://github.com/dawhubapp/flstudio-mcp", "flstudio-mcp"]
 ```
 
 ## 3. Optional: offline-mode prerequisites
@@ -67,9 +65,29 @@ on the canonical TS parser/serializer. That subprocess needs one of:
 
 | Option | Install | Notes |
 |--------|---------|-------|
-| **A. `bun` + sibling `flpdiff/` checkout** | `brew install oven-sh/bun/bun` then have `flpdiff/` checked out alongside `mcp/` | Default for development. ~25 ms cold per call. |
-| **B. `flpdiff` on PATH** | `npm i -g flpdiff` | For users who don't want bun. Works the same. |
+| **A. `bun` + a `flpdiff` checkout** | `brew install oven-sh/bun/bun`, `git clone https://github.com/dawhubapp/flpdiff`, `cd flpdiff && bun install`, then point the server at it (below) | Works today. ~25 ms cold per call. |
+| **B. `flpdiff` on PATH** | `npm i -g flpdiff` | Not yet: the published npm package predates the `bridge` subcommand. Coming with the next flpdiff release. |
 | **C. Custom override** | `export FLSTUDIO_MCP_BRIDGE_CMD="node /path/to/bridge.mjs"` | Vendoring a compiled bundle, etc. |
+
+For option A, set `FLSTUDIO_MCP_BRIDGE_CMD` in your MCP client config. The
+value is the full command, including the trailing `bridge`:
+
+```json
+{
+  "mcpServers": {
+    "flstudio": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/dawhubapp/flstudio-mcp", "flstudio-mcp"],
+      "env": {
+        "FLSTUDIO_MCP_BRIDGE_CMD": "bun run /path/to/flpdiff/src/cli.ts bridge"
+      }
+    }
+  }
+}
+```
+
+If you develop with a `flpdiff/` checkout next to this repo, the server
+finds it on its own and no override is needed.
 
 If none are present, `offline_execute` returns `UNKNOWN` envelopes with
 an actionable hint pointing at `FLSTUDIO_MCP_BRIDGE_CMD`. `live_execute`
