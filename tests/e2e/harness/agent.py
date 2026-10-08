@@ -11,7 +11,12 @@ Design notes:
   * Prompt caching: the system prompt + the entire tool list are
     invariant across turns, so we attach ``cache_control={"type":
     "ephemeral"}`` to the last tool. That caches everything before
-    it, dropping per-iteration cost ~70%.
+    it, dropping per-iteration cost ~70%. A top-level ``cache_control``
+    also caches the growing conversation (automatic breakpoint on the
+    last block) — without it every turn re-bills the whole history as
+    fresh input (the first brief run paid ~1.6M uncached tokens).
+  * The input-token cap counts every prompt token (uncached + cache
+    writes + cache reads), so caching doesn't switch the cap off.
   * Iteration cap (default 30) and total input-token cap (default
     200_000) are enforced inside the loop. Both are *controlled*
     failure modes — the run still returns an ``AgentRun`` with
@@ -72,6 +77,8 @@ class AgentConfig:
     max_input_tokens: int = 200_000
     max_output_tokens_per_turn: int = 4096
     cache_system: bool = True
+    # Top-level automatic caching of the conversation history.
+    cache_history: bool = True
     # Claude Opus 5.5 defaults to effort "medium"; brief runs set it explicitly.
     effort: str | None = None
 
@@ -106,6 +113,11 @@ class AgentRun:
     @property
     def total_input_tokens(self) -> int:
         return sum(t.input_tokens for t in self.turns)
+
+    @property
+    def total_prompt_tokens(self) -> int:
+        """Every prompt token sent: uncached + cache writes + cache reads."""
+        return self.total_input_tokens + self.total_cache_creation + self.total_cache_read
 
     @property
     def total_output_tokens(self) -> int:
@@ -218,13 +230,15 @@ async def run_agent(
     started = time.monotonic()
 
     for iteration in range(1, cfg.max_iterations + 1):
-        if run.total_input_tokens >= cfg.max_input_tokens:
+        if run.total_prompt_tokens >= cfg.max_input_tokens:
             run.terminated = "token_cap"
             break
 
         extra: dict[str, Any] = {}
         if cfg.effort:
             extra["output_config"] = {"effort": cfg.effort}
+        if cfg.cache_history:
+            extra["cache_control"] = {"type": "ephemeral"}
         message = await client.messages.create(
             model=cfg.model,
             max_tokens=cfg.max_output_tokens_per_turn,

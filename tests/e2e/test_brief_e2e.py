@@ -3,7 +3,7 @@
 Gated on FLSTUDIO_MCP_E2E=1 + ANTHROPIC_API_KEY (conftest). Rendering needs
 FL Studio installed and closed: FLSTUDIO_RENDER_E2E=1. Quality gates only
 assert with FLSTUDIO_BRIEF_STRICT=1 (Q4 exit); the baseline run records data.
-Cost: ~$0.30-0.50 per brief.
+Cost: ~$1.5 per brief with history caching (the first uncached run cost ~$7).
 """
 
 from __future__ import annotations

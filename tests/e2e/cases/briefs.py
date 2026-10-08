@@ -18,7 +18,8 @@ AGENT_MODEL = "claude-opus-5-5"
 AGENT_EFFORT = "high"
 MAX_ITERATIONS = 40
 MAX_OUTPUT_TOKENS = 16000
-MAX_INPUT_TOKENS = 1_500_000
+# Counts every prompt token incl. cache reads (harness cap semantics); ~$0.6 with caching.
+MAX_INPUT_TOKENS = 2_000_000
 USER_PROMPT_TEMPLATE = (
     "Make a 32-bar beat from scratch in this empty FL Studio project.\n"
     "Brief: {brief}\n\n"

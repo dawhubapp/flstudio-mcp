@@ -237,6 +237,57 @@ async def test_system_prompt_and_tool_caching_attached() -> None:
 
 
 @pytest.mark.anyio
+async def test_conversation_history_is_cached_every_turn() -> None:
+    """Top-level cache_control caches the growing history, not just system + tools."""
+    session = FakeHarnessSession(
+        tools=[{"name": "offline_execute", "description": "", "input_schema": {}}],
+    )
+    responder = ScriptedResponder(
+        messages_to_emit=[
+            FakeMessage(
+                content=[FakeToolUseBlock(id="c1", name="offline_execute", input={})],
+                stop_reason="tool_use",
+            ),
+            FakeMessage(content=[FakeTextBlock("done")], stop_reason="end_turn"),
+        ]
+    )
+    await run_agent(prompt="x", session=session, cfg=AgentConfig(), client=responder)
+    assert [c.get("cache_control") for c in responder.calls] == [{"type": "ephemeral"}] * 2
+
+    off = ScriptedResponder(
+        messages_to_emit=[FakeMessage(content=[FakeTextBlock("ok")], stop_reason="end_turn")]
+    )
+    await run_agent(prompt="x", session=session, cfg=AgentConfig(cache_history=False), client=off)
+    assert "cache_control" not in off.calls[0]
+
+
+@pytest.mark.anyio
+async def test_token_cap_counts_cached_prompt_tokens() -> None:
+    """Cache reads/writes still count toward max_input_tokens, so caching can't disable the cap."""
+    session = FakeHarnessSession(
+        tools=[{"name": "offline_execute", "description": "", "input_schema": {}}],
+    )
+    cached = FakeUsage(
+        input_tokens=10, cache_creation_input_tokens=500, cache_read_input_tokens=600
+    )
+    responder = ScriptedResponder(
+        messages_to_emit=[
+            FakeMessage(
+                content=[FakeToolUseBlock(id="c1", name="offline_execute", input={})],
+                stop_reason="tool_use",
+                usage=cached,
+            ),
+            FakeMessage(content=[FakeTextBlock("done")], stop_reason="end_turn"),
+        ]
+    )
+    run = await run_agent(
+        prompt="x", session=session, cfg=AgentConfig(max_input_tokens=1000), client=responder
+    )
+    assert run.terminated == "token_cap"
+    assert run.total_prompt_tokens == 1110
+
+
+@pytest.mark.anyio
 async def test_tool_filter_shrinks_tool_list() -> None:
     """tool_filter callback can drop tools the agent shouldn't see."""
     session = FakeHarnessSession(
