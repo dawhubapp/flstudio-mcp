@@ -54,6 +54,8 @@ OfflineKind = Literal[
     "find_insert_by_name",
     "find_pattern_by_name",
     "find_plugin_instances",
+    # Epic 11 / F11.1.1 — Tier 0 symbolic beat checks (read-only)
+    "check_beat",
     # Phase 3.2 write kinds
     "set_tempo",
     "set_pattern_name",
@@ -128,6 +130,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "find_insert_by_name",
     "find_pattern_by_name",
     "find_plugin_instances",
+    "check_beat",
     "set_tempo",
     "set_pattern_name",
     "set_channel_name",
@@ -402,6 +405,9 @@ def execute(
             err=ToolError(ErrorCode.INVALID_ARGS, "args.path is required (non-empty string)"),
         )
 
+    if kind == "check_beat":
+        return _do_check_beat(args, runtime=runtime, log_id=log_id, started=started)
+
     snapshot_id: str | None = None
     if kind in WRITE_KINDS:
         # Refuse if FL holds the file open — its in-memory state would
@@ -492,6 +498,57 @@ def execute(
     return env
 
 
+def _do_check_beat(
+    args: dict[str, Any],
+    *,
+    runtime: OfflineRuntime | None,
+    log_id: str,
+    started: float,
+) -> dict[str, Any]:
+    """F11.1.1 — describe via the bridge, then run the Tier 0 symbolic checks."""
+    from ..beat_check import GENRES, ROLES, check_beat
+
+    kind = "check_beat"
+
+    def invalid(message: str) -> dict[str, Any]:
+        return _emit_error(
+            kind=kind,
+            log_id=log_id,
+            started=started,
+            err=ToolError(ErrorCode.INVALID_ARGS, message),
+        )
+
+    genre = args.get("genre")
+    if genre not in GENRES:
+        return invalid(f"args.genre must be one of {list(GENRES)}")
+    key = args.get("key")
+    if key is not None and not isinstance(key, str):
+        return invalid("args.key must be a string like 'F#m' or 'D dorian'")
+    roles_raw = args.get("roles") or {}
+    if not isinstance(roles_raw, dict):
+        return invalid("args.roles must be an object {channel_iid: role}")
+    roles: dict[int, str] = {}
+    for raw_iid, role in roles_raw.items():
+        try:
+            iid = int(raw_iid)
+        except (TypeError, ValueError):
+            return invalid(f"args.roles keys must be channel iids, got {raw_iid!r}")
+        if role not in ROLES:
+            return invalid(f"unknown role {role!r}; roles: {list(ROLES)}")
+        roles[iid] = role
+
+    described = execute("describe", {"path": args["path"]}, runtime=runtime)
+    if not described["ok"]:
+        return {**described, "kind": kind}
+    try:
+        result = check_beat(described["result"], genre, key=key, roles=roles or None)
+    except ValueError as exc:
+        return invalid(str(exc))
+    env = _envelope(ok=True, kind=kind, result=result.to_dict(), started_at=started, log_id=log_id)
+    record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
+    return env
+
+
 _SNAPSHOT_STORE_OVERRIDE: SnapshotStore | None = None
 
 
@@ -565,6 +622,7 @@ def register(
             "  - find_insert_by_name(path, query, fuzzy?): substring search by mixer insert name. Returns [{index, name}].\n"
             "  - find_pattern_by_name(path, query, fuzzy?): substring search by pattern name. Returns [{id, name, notes}].\n"
             "  - find_plugin_instances(path, plugin_name): locate every instance of a plugin (channel + mixer scopes). Returns [{scope, channel_index|insert_index+slot_index, name}].\n"
+            "  - check_beat(path, genre, key?, roles?): Tier 0 musicality checks on the arranged beat — register per role (plugin channels), velocity spread, chord voicings, genre groove (house four-on-the-floor drop, trap half-time backbeat), section contrast. genre='house'|'trap'; key like 'F#m' or 'D dorian'; roles={channel_iid: role} overrides name-based inference. Returns {ok, issues: [{severity, message, hint, role?, section?}], metrics}.\n"
             "\n"
             "Mutation kinds (auto-snapshot before write; result includes snapshot_id):\n"
             "  - set_tempo(path, bpm): replace the modern 0x9C tempo event.\n"
