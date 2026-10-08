@@ -37,6 +37,10 @@ class ErrorCode(StrEnum):
     FL_DIALOG_BLOCKING = "FL_DIALOG_BLOCKING"
     SNAPSHOT_FAILED = "SNAPSHOT_FAILED"
     PREFLIGHT_FAILED = "PREFLIGHT_FAILED"
+    FL_APP_NOT_FOUND = "FL_APP_NOT_FOUND"
+    FL_BUSY = "FL_BUSY"
+    RENDER_TIMEOUT = "RENDER_TIMEOUT"
+    RENDER_FAILED = "RENDER_FAILED"
     UNKNOWN = "UNKNOWN"
 
 
@@ -69,6 +73,20 @@ _DEFAULT_HINTS: dict[ErrorCode, str] = {
     ),
     ErrorCode.PREFLIGHT_FAILED: (
         "Run live_execute(kind='verify_setup') for step-by-step diagnosis."
+    ),
+    ErrorCode.FL_APP_NOT_FOUND: (
+        "Install FL Studio, or set FLSTUDIO_MCP_FL_APP to the FL Studio .app path."
+    ),
+    ErrorCode.FL_BUSY: (
+        "FL Studio is open. Save and quit FL, then retry — rendering starts its own "
+        "headless FL instance."
+    ),
+    ErrorCode.RENDER_TIMEOUT: (
+        "FL didn't finish rendering in time. A dialog (license, missing plugin or "
+        "sample) may be blocking it: open FL once by hand, dismiss it, quit FL, retry."
+    ),
+    ErrorCode.RENDER_FAILED: (
+        "FL exited without writing a WAV. Open the project in FL to check it loads, then retry."
     ),
     ErrorCode.UNKNOWN: "",
 }
