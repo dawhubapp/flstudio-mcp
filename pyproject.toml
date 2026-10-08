@@ -41,6 +41,8 @@ dependencies = [
     # pyautogui drives FL's Settings dialog (no AX tree available — dialog
     # is rendered with FL's custom UI). Used by installer.wire_fl only.
     "pyautogui>=0.9.54",
+    "numpy>=2.4.6",
+    "soundfile>=0.14.0",
 ]
 
 [tool.uv.sources]
