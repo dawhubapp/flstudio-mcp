@@ -23,15 +23,18 @@ from flstudio_mcp.render import RenderError, render_to_wav
 from flstudio_mcp.tools.render import sections_for_audio
 
 from .cases.briefs import (
+    ADDENDUM_ENV,
     AGENT_EFFORT,
     AGENT_MODEL,
     BASE_FLP,
     MAX_INPUT_TOKENS,
     MAX_ITERATIONS,
     MAX_OUTPUT_TOKENS,
+    PROMPT_PATH,
     USER_PROMPT_TEMPLATE,
     Brief,
     load_briefs,
+    system_prompt,
 )
 from .harness.agent import AgentConfig, run_agent
 from .harness.beat_judge import judge_beat
@@ -48,8 +51,6 @@ from .test_full_song_e2e import _flpdiff_cmd
 
 RENDER_ENV = "FLSTUDIO_RENDER_E2E"
 STRICT_ENV = "FLSTUDIO_BRIEF_STRICT"
-# Baseline uses today's prompt; F11.3.2 switches brief runs to the shipped make_beat prompt.
-PROMPT_PATH = Path(__file__).parent / "harness" / "prompts" / "full_song.md"
 
 
 def _parses(ctx: InvariantContext) -> InvariantResult:
@@ -80,6 +81,7 @@ async def test_brief(brief: Brief, tmp_path: Path, anthropic_client: AsyncAnthro
     scratch = tmp_path / "beat.flp"
     shutil.copy2(BASE_FLP, scratch)
     flpdiff_cmd = _flpdiff_cmd()
+    prompt_text, prompt_label = system_prompt(PROMPT_PATH, os.environ.get(ADDENDUM_ENV, ""))
 
     async with open_session(tmp_path / "sess") as ses:
         before = await capture_state(ses, scratch)
@@ -89,7 +91,7 @@ async def test_brief(brief: Brief, tmp_path: Path, anthropic_client: AsyncAnthro
             cfg=AgentConfig(
                 model=AGENT_MODEL,
                 effort=AGENT_EFFORT,
-                system_prompt=PROMPT_PATH.read_text(encoding="utf-8"),
+                system_prompt=prompt_text,
                 max_iterations=MAX_ITERATIONS,
                 max_input_tokens=MAX_INPUT_TOKENS,
                 max_output_tokens_per_turn=MAX_OUTPUT_TOKENS,
@@ -122,7 +124,7 @@ async def test_brief(brief: Brief, tmp_path: Path, anthropic_client: AsyncAnthro
     meta = asdict(brief) | {
         "agent_model": AGENT_MODEL,
         "effort": AGENT_EFFORT,
-        "prompt": PROMPT_PATH.name,
+        "prompt": prompt_label,
     }
     (out_dir / "brief.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     shutil.copy2(scratch, out_dir / "beat.flp")

@@ -12,6 +12,10 @@ from .full_song import CORPUS_DIR
 
 BRIEFS_PATH = Path(__file__).resolve().parents[1] / "briefs.toml"
 BASE_FLP = CORPUS_DIR / "re_base" / "fl25" / "base_empty.flp"
+# Baseline uses today's prompt; F11.3.2 switches brief runs to the shipped make_beat prompt.
+PROMPT_PATH = Path(__file__).resolve().parents[1] / "harness" / "prompts" / "full_song.md"
+# Comma-separated prompt addenda (prompts/addendum_<name>.md) for A/B runs, e.g. "blueprint".
+ADDENDUM_ENV = "FLSTUDIO_BRIEF_ADDENDUM"
 SETS = ("tuning", "held_out")
 
 AGENT_MODEL = "claude-opus-5-5"
@@ -53,3 +57,16 @@ def load_briefs(path: Path = BRIEFS_PATH) -> list[Brief]:
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate brief ids")
     return briefs
+
+
+def system_prompt(base: Path, addenda: str) -> tuple[str, str]:
+    """Base prompt plus ``addendum_<name>.md`` files next to it; returns (text, label)."""
+    parts = [base.read_text(encoding="utf-8")]
+    label = base.name
+    for name in filter(None, (n.strip() for n in addenda.split(","))):
+        path = base.parent / f"addendum_{name}.md"
+        if not path.is_file():
+            raise ValueError(f"unknown prompt addendum {name!r} ({path.name} not found)")
+        parts.append(path.read_text(encoding="utf-8"))
+        label += f"+{path.name}"
+    return "\n\n".join(p.strip("\n") for p in parts), label

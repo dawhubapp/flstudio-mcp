@@ -56,6 +56,8 @@ OfflineKind = Literal[
     "find_plugin_instances",
     # Epic 11 / F11.1.1 — Tier 0 symbolic beat checks (read-only)
     "check_beat",
+    # Epic 11 / F11.2.7 — genre blueprint (no FLP path required)
+    "get_blueprint",
     # Phase 3.2 write kinds
     "set_tempo",
     "set_pattern_name",
@@ -131,6 +133,7 @@ SUPPORTED_KINDS: tuple[str, ...] = (
     "find_pattern_by_name",
     "find_plugin_instances",
     "check_beat",
+    "get_blueprint",
     "set_tempo",
     "set_pattern_name",
     "set_channel_name",
@@ -223,7 +226,7 @@ WRITE_KINDS: frozenset[str] = frozenset(
 # The dispatcher must not resolve a bridge command for these so they
 # keep working with no Node/bun on PATH (see register()).
 BRIDGE_FREE_KINDS: frozenset[str] = frozenset(
-    {"list_apis", "list_factory_samples", "list_factory_presets"}
+    {"list_apis", "list_factory_samples", "list_factory_presets", "get_blueprint"}
 )
 TOOL_NAME = "offline_execute"
 
@@ -396,6 +399,9 @@ def execute(
         _LOG.info("offline_execute ok", extra={"kind": kind, "log_id": log_id, "n": len(entries)})
         return env
 
+    if kind == "get_blueprint":
+        return _do_get_blueprint(args, log_id=log_id, started=started)
+
     path = args.get("path")
     if not isinstance(path, str) or not path:
         return _emit_error(
@@ -495,6 +501,35 @@ def execute(
         extra={"kind": kind, "log_id": log_id, "duration_ms": env["duration_ms"]},
     )
     record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
+    return env
+
+
+def _do_get_blueprint(args: dict[str, Any], *, log_id: str, started: float) -> dict[str, Any]:
+    """F11.2.7 — the genre's blueprint as JSON (forms as [section, bars] lists)."""
+    from ..music.blueprints import BlueprintError, available_genres, load_blueprint
+
+    kind = "get_blueprint"
+    genre = args.get("genre")
+    try:
+        if not isinstance(genre, str):
+            raise BlueprintError(
+                f"args.genre is required; available: {', '.join(available_genres())}"
+            )
+        blueprint = load_blueprint(genre)
+    except BlueprintError as exc:
+        return _emit_error(
+            kind=kind,
+            log_id=log_id,
+            started=started,
+            err=ToolError(ErrorCode.INVALID_ARGS, str(exc)),
+        )
+    blueprint["forms"] = {
+        name: [[section, bars] for section, bars in form]
+        for name, form in blueprint["forms"].items()
+    }
+    env = _envelope(ok=True, kind=kind, result=blueprint, started_at=started, log_id=log_id)
+    record_event(f"{TOOL_NAME}.{kind}", True, env["duration_ms"], log_id=log_id)
+    _LOG.info("offline_execute ok", extra={"kind": kind, "log_id": log_id})
     return env
 
 
@@ -623,6 +658,7 @@ def register(
             "  - find_pattern_by_name(path, query, fuzzy?): substring search by pattern name. Returns [{id, name, notes}].\n"
             "  - find_plugin_instances(path, plugin_name): locate every instance of a plugin (channel + mixer scopes). Returns [{scope, channel_index|insert_index+slot_index, name}].\n"
             "  - check_beat(path, genre, key?, roles?): Tier 0 musicality checks on the arranged beat — register per role (plugin channels), velocity spread, chord voicings, genre groove (house four-on-the-floor drop, trap half-time backbeat), section contrast. genre='house'|'trap'; key like 'F#m' or 'D dorian'; roles={channel_iid: role} overrides name-based inference. Returns {ok, issues: [{severity, message, hint, role?, section?}], metrics}.\n"
+            "  - get_blueprint(genre): arrangement rules for a genre (no path needed). Returns {phrase_bars, bpm, layers: {role: [layer]}, forms: {beat_32|beat_64|song: [[section, bars], ...]}, sections: {name: {bars: [allowed], energy, parts: {'role.layer': share of the section's bars it plays}}}, transitions: {phrase_change, phrase_end_any, phrase_end: {device: rate}, last_bar_rest, pre_drop_silent}}. genre='house'.\n"
             "\n"
             "Mutation kinds (auto-snapshot before write; result includes snapshot_id):\n"
             "  - set_tempo(path, bpm): replace the modern 0x9C tempo event.\n"
