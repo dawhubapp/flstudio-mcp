@@ -150,3 +150,15 @@ def test_prune_runs_no_op_when_under_retention(tmp_path: Path) -> None:
         (base / f"2026-01-01-{i:03d}").mkdir()
     _prune_runs(base, retention=20)
     assert len(list(base.iterdir())) == 5
+
+
+def test_prune_keeps_marked_runs(tmp_path) -> None:
+    from ..harness.reporting import KEEP_MARKER, _prune_runs
+
+    for i in range(25):
+        (tmp_path / f"2026{i:04d}-run").mkdir()
+    (tmp_path / "20260000-run" / KEEP_MARKER).write_text("rated\n")
+    _prune_runs(tmp_path, retention=20)
+    names = {p.name for p in tmp_path.iterdir()}
+    assert "20260000-run" in names
+    assert len(names) == 21

@@ -25,6 +25,7 @@ from .state_capture import FLPState
 
 DEFAULT_RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
 RUN_RETENTION = 20
+KEEP_MARKER = "KEEP"  # rated runs (scripts/rate_renders.py) are never pruned
 
 
 def _to_jsonable(obj: Any) -> Any:
@@ -188,7 +189,7 @@ def _prune_runs(base: Path, retention: int = RUN_RETENTION) -> None:
     """Keep newest N run dirs; delete the rest."""
     if not base.is_dir():
         return
-    runs = [p for p in base.iterdir() if p.is_dir()]
+    runs = [p for p in base.iterdir() if p.is_dir() and not (p / KEEP_MARKER).exists()]
     if len(runs) <= retention:
         return
     runs.sort(key=lambda p: p.name, reverse=True)  # ISO timestamp prefix sorts correctly

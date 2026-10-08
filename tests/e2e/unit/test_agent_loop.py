@@ -284,3 +284,91 @@ async def test_run_aggregates_token_totals() -> None:
     assert run.total_input_tokens == 1234
     assert run.total_output_tokens == 56
     assert run.total_cache_read == 200
+
+
+@dataclass
+class FakeThinkingBlock:
+    """Stands in for an SDK ThinkingBlock: has to_dict like real SDK models."""
+
+    thinking: str = ""
+    signature: str = "sig-abc"
+    type: str = "thinking"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"type": self.type, "thinking": self.thinking, "signature": self.signature}
+
+
+@pytest.mark.anyio
+async def test_thinking_blocks_replayed_unchanged() -> None:
+    session = FakeHarnessSession(
+        tools=[{"name": "offline_execute", "description": "", "input_schema": {}}],
+        canned_envelopes={"offline_execute": _ok_envelope("describe")},
+    )
+    responder = ScriptedResponder(
+        messages_to_emit=[
+            FakeMessage(
+                content=[
+                    FakeThinkingBlock(),
+                    FakeToolUseBlock(id="c1", name="offline_execute", input={"kind": "describe"}),
+                ],
+                stop_reason="tool_use",
+            ),
+            FakeMessage(content=[FakeTextBlock(text="done")], stop_reason="end_turn"),
+        ]
+    )
+    await run_agent(prompt="go", session=session, cfg=AgentConfig(), client=responder)
+    replayed = responder.calls[1]["messages"][1]["content"]
+    assert replayed[0] == FakeThinkingBlock()
+    assert replayed[1]["type"] == "tool_use"
+
+
+@pytest.mark.anyio
+async def test_effort_sent_only_when_set() -> None:
+    for effort, expected in (("high", {"effort": "high"}), (None, None)):
+        responder = ScriptedResponder(
+            messages_to_emit=[
+                FakeMessage(content=[FakeTextBlock(text="ok")], stop_reason="end_turn")
+            ]
+        )
+        await run_agent(
+            prompt="hi",
+            session=FakeHarnessSession(),
+            cfg=AgentConfig(effort=effort),
+            client=responder,
+        )
+        assert responder.calls[0].get("output_config") == expected
+
+
+@pytest.mark.anyio
+async def test_refusal_terminates_as_refusal() -> None:
+    responder = ScriptedResponder(
+        messages_to_emit=[FakeMessage(content=[FakeTextBlock(text="no")], stop_reason="refusal")]
+    )
+    run = await run_agent(
+        prompt="hi", session=FakeHarnessSession(), cfg=AgentConfig(), client=responder
+    )
+    assert run.terminated == "refusal"
+
+
+@pytest.mark.anyio
+async def test_unknown_fake_blocks_are_dropped_not_sent_as_empty_text() -> None:
+    @dataclass
+    class Weird:
+        type: str = "mystery"
+
+    session = FakeHarnessSession(
+        tools=[{"name": "offline_execute", "description": "", "input_schema": {}}],
+    )
+    responder = ScriptedResponder(
+        messages_to_emit=[
+            FakeMessage(
+                content=[Weird(), FakeToolUseBlock(id="c1", name="offline_execute", input={})],
+                stop_reason="tool_use",
+            ),
+            FakeMessage(content=[FakeTextBlock(text="done")], stop_reason="end_turn"),
+        ]
+    )
+    await run_agent(prompt="go", session=session, cfg=AgentConfig(), client=responder)
+    replayed = responder.calls[1]["messages"][1]["content"]
+    assert all(b.get("type") != "text" or b.get("text") for b in replayed)
+    assert [b["type"] for b in replayed] == ["tool_use"]

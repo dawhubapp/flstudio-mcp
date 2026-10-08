@@ -31,7 +31,9 @@ from typing import Any, Literal, Protocol
 
 from .client import HarnessSession
 
-TerminationReason = Literal["end_turn", "iter_cap", "token_cap", "exception", "max_tokens"]
+TerminationReason = Literal[
+    "end_turn", "iter_cap", "token_cap", "exception", "max_tokens", "refusal"
+]
 DEFAULT_MODEL = "claude-opus-4-7"
 
 
@@ -70,6 +72,8 @@ class AgentConfig:
     max_input_tokens: int = 200_000
     max_output_tokens_per_turn: int = 4096
     cache_system: bool = True
+    # Claude Opus 5.5 defaults to effort "medium"; brief runs set it explicitly.
+    effort: str | None = None
 
 
 @dataclass
@@ -145,7 +149,7 @@ def _tool_use_fields(block: Any) -> tuple[str, str, dict[str, Any]]:
     return getattr(block, "id", ""), getattr(block, "name", ""), dict(getattr(block, "input", {}))
 
 
-def _content_block_to_dict(block: Any) -> dict[str, Any]:
+def _content_block_to_dict(block: Any) -> dict[str, Any] | None:
     """Serialise an assistant content block into the dict shape the API
     accepts back as a message.
 
@@ -160,7 +164,26 @@ def _content_block_to_dict(block: Any) -> dict[str, Any]:
         return {"type": "tool_use", "id": tool_id, "name": name, "input": payload}
     if isinstance(block, dict):
         return dict(block)
-    return {"type": "text", "text": ""}
+    return None
+
+
+def _assistant_content(blocks: list[Any]) -> list[Any]:
+    """The assistant turn as sent back to the API.
+
+    Real SDK blocks (they have ``to_dict``) go back unchanged: Claude
+    Opus 5.5 always thinks, and thinking blocks must be replayed exactly
+    as produced. Scripted test blocks are normalised to dicts; unknown
+    ones are dropped rather than sent as empty text (a 400).
+    """
+    out: list[Any] = []
+    for block in blocks:
+        if hasattr(block, "to_dict"):
+            out.append(block)
+            continue
+        as_dict = _content_block_to_dict(block)
+        if as_dict is not None:
+            out.append(as_dict)
+    return out
 
 
 async def run_agent(
@@ -199,12 +222,16 @@ async def run_agent(
             run.terminated = "token_cap"
             break
 
+        extra: dict[str, Any] = {}
+        if cfg.effort:
+            extra["output_config"] = {"effort": cfg.effort}
         message = await client.messages.create(
             model=cfg.model,
             max_tokens=cfg.max_output_tokens_per_turn,
             system=system or None,  # type: ignore[arg-type]
             tools=tools,
             messages=messages,
+            **extra,
         )
 
         usage = message.usage
@@ -219,7 +246,7 @@ async def run_agent(
 
         # Append the assistant turn verbatim so subsequent calls
         # have the full conversation history.
-        assistant_blocks = [_content_block_to_dict(b) for b in message.content]
+        assistant_blocks = _assistant_content(list(message.content))
         messages.append({"role": "assistant", "content": assistant_blocks})
 
         tool_results: list[dict[str, Any]] = []
@@ -249,6 +276,10 @@ async def run_agent(
 
         run.turns.append(turn)
 
+        if message.stop_reason == "refusal":
+            run.terminated = "refusal"
+            run.final_text = "\n".join(turn.text_blocks)
+            break
         if message.stop_reason == "end_turn":
             run.terminated = "end_turn"
             run.final_text = "\n".join(turn.text_blocks)
