@@ -109,11 +109,15 @@ Every kind takes `args = {"path": "<path>", ...}`.
   `{channel_iid}`; `kind='effect'` requires `insert_index +
   slot_marker` and returns `{fl_ipc_slot_index = slot_marker + 1}`.
   Optional `name` overrides the new channel's display name for
-  generators. **Key octave rule:** native plugins (BooBass, DX10,
-  Sytrus, etc.) play at WRITTEN pitch — use the actual musical
-  octave (bassline 36..47, lead 60..84). This is the OPPOSITE of
-  `set_channel_sample_path` where factory samples play at C5
-  (key 60) native and bass MIDI keys live around 72..79.
+  generators. **Key octave rule (measured on FL 26 renders):** plugin
+  synths play the written key with MIDI numbering — key 45 ≈ 110 Hz,
+  key 57 ≈ 220 Hz, key 60 = middle C (FL labels it "C5") — so write
+  basslines around 28..55 and leads around 60..84. Sampler channels
+  (`set_channel_sample_path`) play the sample at its own recorded
+  pitch on key 60, and each +12 doubles it: factory
+  "Acoustic Bass (1).wav" sounds ≈ 41 Hz on key 60, ≈ 82 Hz on key 72.
+  Many old factory synth presets (FL 2–4 era DX10 / 3x Osc / FL Keys)
+  play broken when loaded this way; prefer samples or modern presets.
 
 ## Goal
 
