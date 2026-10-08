@@ -1,7 +1,7 @@
-# flstudio-mcp
+# FL Studio MCP Server
 
-MCP server for FL Studio. Lets Claude, Cursor, Codex CLI or any other
-Model Context Protocol client read and edit FL Studio projects, either
+Lets Claude, Cursor, Codex CLI or any other Model Context Protocol
+(MCP) client read and edit FL Studio projects, either
 live in a running FL Studio or offline from `.flp` files on disk.
 
 > **Status: early preview (0.1.0.dev).** macOS + FL Studio 25/26.
