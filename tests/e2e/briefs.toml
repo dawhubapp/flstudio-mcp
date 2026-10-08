@@ -1,0 +1,38 @@
+# Brief set for the beat-quality loop (design doc: 2026-10-08-mcp-beat-quality-design.md).
+# "tuning" briefs drive iteration; "held_out" briefs are never tuned against.
+
+[[brief]]
+id = "house_deep"
+genre = "house"
+set = "tuning"
+text = "classic deep house, ~122, warm jazzy chords, rolling bassline, 32 bars"
+
+[[brief]]
+id = "house_drive"
+genre = "house"
+set = "tuning"
+text = "driving tech-house groove, punchy and minimal, sparse stabs, big build into the drop"
+
+[[brief]]
+id = "trap_dark"
+genre = "trap"
+set = "tuning"
+text = "dark melodic trap, ~140, minor key, sparse intro, heavy 808 that slides, eerie bell lead"
+
+[[brief]]
+id = "trap_bounce"
+genre = "trap"
+set = "tuning"
+text = "bouncy bright trap, hard-hitting 808s, busy hat rolls, catchy pluck melody"
+
+[[brief]]
+id = "house_uplift"
+genre = "house"
+set = "held_out"
+text = "uplifting melodic house, 126, emotional chord progression, long build"
+
+[[brief]]
+id = "trap_cloudy"
+genre = "trap"
+set = "held_out"
+text = "slow cloudy trap around 130, airy pads, minimal drums, gliding 808"
